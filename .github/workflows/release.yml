@@ -1,0 +1,56 @@
+name: Release Browser Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test and security pre-check
+        run: npm test
+
+      - name: Prepare extension roots
+        run: npm run build
+
+      - name: Package browser extensions
+        run: |
+          mkdir -p release
+          (cd build/chrome && zip -r "../../release/flow-batch-storyboard-${{ github.ref_name }}-chrome.zip" .)
+          (cd build/firefox && zip -r "../../release/flow-batch-storyboard-${{ github.ref_name }}-firefox.zip" .)
+
+      - name: Verify packaged extension roots
+        run: |
+          unzip -l "release/flow-batch-storyboard-${{ github.ref_name }}-chrome.zip" | grep -q 'manifest.json'
+          unzip -l "release/flow-batch-storyboard-${{ github.ref_name }}-firefox.zip" | grep -q 'manifest.json'
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'release/*.zip'
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: 'release/*.zip'
+          generate_release_notes: true
+

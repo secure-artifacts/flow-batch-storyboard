@@ -1,0 +1,1 @@
+import{t as e}from"./const-DweaA0In.js";function t(e,t){chrome.runtime.onMessage.addListener(((n,r)=>{n.from===e&&(t&&console.log(`received message from background script`,n),window.postMessage({from:n.from,payload:n.payload,callbackId:n.callbackId}))}))}t(e);

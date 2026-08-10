@@ -1,0 +1,11 @@
+node_modules/
+build/
+release/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+Flow断点_*.json
+downloads/
+*.mp4
+

@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "Flow批量生成 · 分镜表",
+  "description": "按分镜表批量生成 Flow 视频，支持按文件名匹配图片、断点续作、温和分轮补跑与严格命名下载",
+  "version": "2.3.26",
+  "author": "Flow Batch Storyboard Contributors",
+  "minimum_chrome_version": "116",
+  "version_name": "2.3.26（多视频回调与补下载修复）",
+  "content_scripts": [
+    {
+      "js": ["assets/index.ts-loader-DJMxT1XF.js"],
+      "matches": [
+        "https://labs.google/fx/zh/tools/flow",
+        "https://labs.google/fx/zh/tools/flow/project/*"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage",
+    "downloads",
+    "webRequest",
+    "offscreen",
+    "power"
+  ],
+  "action": {
+    "default_icon": "assets/logo-128.png"
+  },
+  "host_permissions": [
+    "https://labs.google/*",
+    "https://labs.google/fx/zh/tools/flow",
+    "https://labs.google/fx/zh/tools/flow/project/*"
+  ],
+  "icons": {
+    "16": "assets/logo-16.png",
+    "19": "assets/logo-19.png",
+    "32": "assets/logo-32.png",
+    "38": "assets/logo-38.png",
+    "48": "assets/logo-48.png",
+    "128": "assets/logo-128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "matches": ["https://labs.google/*"],
+      "resources": ["*"],
+      "use_dynamic_url": false
+    },
+    {
+      "matches": ["https://labs.google/*", "https://labs.google/*"],
+      "resources": ["assets/const-DweaA0In.js", "assets/index.ts-CASKl1qI.js"],
+      "use_dynamic_url": false
+    }
+  ],
+  "externally_connectable": {
+    "matches": [
+      "https://labs.google/fx/zh/tools/flow",
+      "https://labs.google/fx/zh/tools/flow/project/*"
+    ]
+  }
+}
