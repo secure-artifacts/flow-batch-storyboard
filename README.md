@@ -72,6 +72,31 @@ git push origin v2.3.26
 
 工作流会测试项目、生成 Chromium/Firefox ZIP、为最终 ZIP 生成 GitHub Artifact Attestation，并由 `github-actions[bot]` 上传 Release。请勿在 GitHub 网页中人工添加或替换 Release 文件。
 
+### 如何发布新版本
+
+每次发布前，先把代码提交到 `main`：
+
+```bash
+git status
+git add .
+git commit -m "说明本次改动"
+git push origin main
+```
+
+然后创建并推送以 `v` 开头的版本标签（将示例版本号替换为实际版本）：
+
+```bash
+git tag -a v2.3.27 -m "Release version 2.3.27"
+git push origin v2.3.27
+```
+
+标签推送后，前往 GitHub 仓库的 **Actions** 页面查看构建进度；成功后在 **Releases** 页面下载 Chrome 或 Firefox ZIP。若构建失败，修复代码或工作流后删除失败标签并重新创建：
+
+```bash
+git tag -d v2.3.27
+git push origin :refs/tags/v2.3.27
+```
+
 ## 验证发布来源
 
 安装 GitHub CLI 后可验证下载文件：
