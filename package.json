@@ -1,6 +1,6 @@
 {
   "name": "flow-batch-storyboard-extension",
-  "version": "2.3.26",
+  "version": "2.3.56",
   "private": true,
   "description": "Google Labs Flow storyboard batch-generation browser extension for Chromium and Firefox",
   "type": "module",
@@ -12,4 +12,3 @@
     "node": ">=20"
   }
 }
-

@@ -152,50 +152,53 @@ async function o(e, t) {
       conflictAction: `uniquify`,
       saveAs: !1,
     });
-    if (chrome.runtime.lastError)
-      return { error: chrome.runtime.lastError.message };
-    const r = await chrome.downloads.search({ id: n }),
-      i = r?.[0];
-    if (i?.state === `complete`)
-      return { id: n, state: `complete`, filename: i.filename };
+    if (n == null) return { error: `浏览器没有创建下载任务` };
     return await new Promise((e) => {
-      let t = !1;
-      const r = () => {
-          chrome.downloads.onChanged.removeListener(i);
-          clearTimeout(a);
+      let t = !1,
+        r = !1,
+        i,
+        a;
+      const o = () => {
+          (chrome.downloads.onChanged.removeListener(c),
+            clearInterval(i),
+            clearTimeout(a));
         },
-        o = (n) => {
+        s = (n) => {
           if (t) return;
-          ((t = !0), r(), e(n));
+          ((t = !0), o(), e(n));
         },
-        i = (e) => {
-          if (e.id !== n) return;
-          if (e.state?.current === `complete`) {
-            chrome.downloads.search({ id: n }).then((e) => {
-              o({
-                id: n,
-                state: `complete`,
-                filename: e?.[0]?.filename || ``,
-              });
-            });
-            return;
+        l = async () => {
+          if (t || r) return;
+          r = !0;
+          try {
+            const e = (await chrome.downloads.search({ id: n }))?.[0];
+            e?.state === `complete`
+              ? s({ id: n, state: `complete`, filename: e.filename || `` })
+              : e?.state === `interrupted` &&
+                s({ id: n, error: e.error || `浏览器下载被中断` });
+          } catch {}
+          finally {
+            r = !1;
           }
+        },
+        c = (e) => {
+          if (e.id !== n) return;
+          if (e.state?.current === `complete`) return void l();
           e.state?.current === `interrupted` &&
-            o({
+            s({
               id: n,
               error: e.error?.current || `浏览器下载被中断`,
             });
-        },
-        a = setTimeout(
+        };
+      (chrome.downloads.onChanged.addListener(c),
+        (i = setInterval(l, 1e3)),
+        (a = setTimeout(
           async () => {
-            const e = (await chrome.downloads.search({ id: n }))?.[0];
-            e?.state === `complete`
-              ? o({ id: n, state: `complete`, filename: e.filename })
-              : o({ id: n, error: `等待浏览器下载完成超时` });
+            (await l(), t || s({ id: n, error: `等待浏览器下载完成超时` }));
           },
           30 * 60 * 1e3,
-        );
-      chrome.downloads.onChanged.addListener(i);
+        )),
+        l());
     });
   } catch (e) {
     return (console.error(`下载文件出现错误：`, e), { error: e.message });
@@ -562,10 +565,9 @@ function E(e) {
       slug: n,
       isDev: r,
       baseUrl: chrome.runtime.getURL(``),
-    },
-    o = new Set();
+    };
   async function s(e, n = ``) {
-    if (!e || o.has(e)) return;
+    if (!e) return;
     try {
       let r = n;
       if (!r) {
@@ -574,17 +576,12 @@ function E(e) {
       }
       if (!t.some((e) => T(e, r))) return;
       await chrome.tabs.update(e, { autoDiscardable: !1 }).catch(() => {});
-      const i = await chrome.tabs.getZoom(e);
-      if (Math.abs(i - 1) < 0.001) return;
-      (o.add(e), await chrome.tabs.setZoom(e, 1));
     } catch (e) {
-      console.debug(`Flow 页面缩放校正失败`, e);
-    } finally {
-      setTimeout(() => o.delete(e), 120);
+      console.debug(`Flow 标签页保活设置失败`, e);
     }
   }
   function a(e) {
-    chrome.scripting
+    return chrome.scripting
       .executeScript({
         injectImmediately: !0,
         world: `MAIN`,
@@ -596,22 +593,115 @@ function E(e) {
       })
       .catch(() => {});
   }
+  const fbEnsuringFlowTabs = new Set();
+  async function fbReadFlowInjectionState(e) {
+    const n = await chrome.scripting.executeScript({
+      world: `MAIN`,
+      target: { tabId: e },
+      func: () => {
+        const e = document.getElementById(`flow-batch-generate`),
+          n = e?.querySelector(`.open-dialog-button`),
+          r = location.href.startsWith(
+            `https://labs.google/fx/zh/tools/flow/project/`,
+          );
+        return {
+          hasRoot: !!e,
+          hasLauncher: !!n,
+          hiddenOnProjectPage:
+            !!n && r && getComputedStyle(e).display === `none`,
+          startedAt:
+            Number(window.__flowBatchInjectBundleStartedAtV2328) || 0,
+        };
+      },
+    });
+    return (
+      n?.[0]?.result || {
+        hasRoot: !1,
+        hasLauncher: !1,
+        hiddenOnProjectPage: !1,
+        startedAt: 0,
+      }
+    );
+  }
+  async function fbEnsureAlreadyOpenFlowTab(e, n = ``) {
+    if (fbEnsuringFlowTabs.has(e)) return;
+    fbEnsuringFlowTabs.add(e);
+    try {
+      if (!e || !t.some((e) => T(e, n))) return;
+      await a(e);
+      await new Promise((e) => setTimeout(e, 500));
+      let r = await fbReadFlowInjectionState(e);
+      if (r.hasLauncher) {
+        r.hiddenOnProjectPage &&
+          (await chrome.scripting.executeScript({
+            world: `MAIN`,
+            target: { tabId: e },
+            func: () => {
+              const e = document.getElementById(`flow-batch-generate`);
+              e && (e.style.display = `block`);
+            },
+          }));
+        return;
+      }
+      await chrome.scripting.insertCSS({
+        target: { tabId: e },
+        files: [`injects/index.css`],
+      });
+      if (r.startedAt) {
+        await chrome.scripting.executeScript({
+          world: `MAIN`,
+          target: { tabId: e },
+          files: [`externals.js`],
+        });
+        await new Promise((e) => setTimeout(e, 1500));
+        r = await fbReadFlowInjectionState(e);
+        if (r.hasLauncher) return;
+        await chrome.scripting.executeScript({
+          world: `MAIN`,
+          target: { tabId: e },
+          func: () => {
+            const e = document.getElementById(`flow-batch-generate`);
+            if (!e?.querySelector(`.open-dialog-button`)) {
+              e?.remove();
+              window.__flowBatchInjectBundleStartedAtV2328 = 0;
+            }
+          },
+        });
+      } else {
+        await chrome.scripting.executeScript({
+          world: `MAIN`,
+          target: { tabId: e },
+          files: [`transformers/flow.js`, `transformers/disablePageFreeze.js`],
+        });
+      }
+      await chrome.scripting.executeScript({
+        world: `MAIN`,
+        target: { tabId: e },
+        files: [`externals.js`, `injects/index.js`],
+      });
+      await new Promise((e) => setTimeout(e, 1500));
+      r = await fbReadFlowInjectionState(e);
+      if (r.hasLauncher)
+        console.info(`已向 Flow 标签页补注入插件入口`, e);
+      else console.warn(`Flow 标签页补注入后仍未发现插件入口`, e);
+    } catch (e) {
+      console.debug(`向已打开的 Flow 标签页补注入失败`, e);
+    } finally {
+      fbEnsuringFlowTabs.delete(e);
+    }
+  }
   (chrome.tabs.onUpdated.addListener(async (e, n, r) => {
     const i = !!r?.url && t.some((e) => T(e, r.url));
-    (i && s(e, r.url),
-      r?.url &&
-        n?.status &&
-        ((n.status !== `loading` && n.status !== `complete`) || (i && a(e))));
+    if (!i) return;
+    (s(e, r.url), n?.status === `loading` && a(e));
+    n?.status === `complete` && fbEnsureAlreadyOpenFlowTab(e, r.url);
   }),
-    chrome.tabs.onZoomChange.addListener(({ tabId: e, newZoomFactor: t }) => {
-      Math.abs(t - 1) >= 0.001 && s(e);
-    }),
     chrome.tabs.query({}, (e) => {
       for (let n of e)
         n.id &&
           n.url &&
           t.some((e) => T(e, n.url)) &&
-          (a(n.id), s(n.id, n.url));
+          (fbEnsureAlreadyOpenFlowTab(n.id, n.url), s(n.id, n.url));
     }));
 }
 (E({ hostMatch: t, extensionId: n, isDev: !1 }),

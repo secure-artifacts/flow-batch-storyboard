@@ -16,20 +16,19 @@
 | 常见密钥和私人绝对路径 | 本地预检 | 通过 |
 | 个人断点和媒体文件 | 仓库检查 | 未发现 |
 
-## 必须由提交者在 GitHub 完成
+## GitHub 发布状态
 
 | 外部步骤 | 当前状态 |
 |---|---|
-| 使用真实 GitHub 账号申请加入 `secure-artifacts` | 未执行 |
-| 接受组织邀请 | 未执行 |
-| 创建或转移公开仓库 | 未执行 |
-| 设置仓库 description | 未执行 |
+| GitHub 账号与组织权限 | 已确认 `21stcenturypeter-art` 对目标仓库拥有管理员权限 |
+| 接受组织邀请 | 已完成 |
+| 创建或转移公开仓库 | 已完成，仓库为 Public |
+| 设置仓库 description | 已完成 |
 | 推送代码 | 未执行 |
-| 推送 `v2.3.26` 标签并运行 GitHub Actions | 未执行 |
+| 推送 `v2.3.56` 标签并运行 GitHub Actions | 未执行 |
 | 在 GitHub Release 验证 uploader 和 Attestation | 未执行 |
 | 提交安全审核表单和真实开发者名称 | 未执行 |
 
 ## 重要限制
 
 本地检查不能代替平台审核，也不能提前证明 GitHub L2 Attestation 已通过。只有代码推送到目标公开仓库、由标签触发 GitHub-hosted runner 构建、由 `github-actions[bot]` 上传最终资产后，平台才能完成来源、构建器、上传者和标签引用的交叉校验。
-

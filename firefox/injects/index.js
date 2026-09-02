@@ -1,4 +1,8 @@
 (function () {
+  var existingRoot = document.getElementById("flow-batch-generate");
+  var previousStart = Number(window.__flowBatchInjectBundleStartedAtV2328) || 0;
+  if (existingRoot || Date.now() - previousStart < 35000) return;
+  window.__flowBatchInjectBundleStartedAtV2328 = Date.now();
   var startTime = Date.now();
   var timeoutMs = 30000;
   var checkInterval = 50;
@@ -3125,25 +3129,32 @@
         return [o];
       }
       const O9 = {
-          abra: "Omni Flash",
+          abra: "Omni 1.1 Flash",
           veo_3_1_lite: "Veo 3.1 - Lite",
           veo_3_1_fast: "Veo 3.1 - Fast",
           veo_3_1_quality: "Veo 3.1 - Quality",
           veo_3_1_lite_low_priority: "Veo 3.1 - Lite [Lower Priority]",
         },
         WA = {
-          interval: 30,
-          intervalRandom: 20,
-          maxInFlight: 1,
+          interval: 1,
+          intervalRandom: 10,
+          maxInFlight: 4,
           maxInFlightV231: !1,
+          concurrencyDefaultsV245: !1,
           videoModel: "veo_3_1_lite_low_priority",
           aspectRatio: "PORTRAIT",
+          generationType: "IMAGE_TO_VIDEO",
+          generationTypeDefaultsV245: !1,
           outputsPerPrompt: 1,
-          defaultRowMode: "VIDEO_REFERENCES",
+          singleOutputMode: !0,
+          singleOutputDefaultsV243: !1,
+          submitPipelineFixV255: !1,
+          generationRounds: 3,
+          multiRoundDefaultsV242: !1,
           downloadFolder: "",
           autoRetry: !0,
           retryRounds: 3,
-          retryRoundWait: 75,
+          retryRoundWait: 30,
           retryDefaultsV237: !1,
           download: !0,
         },
@@ -3154,6 +3165,32 @@
           }, {}),
           default: WA,
         };
+      function fbClearDefaultSettings() {
+        return {
+          ...D9.default,
+          interval: 1,
+          intervalRandom: 10,
+          maxInFlight: 4,
+          maxInFlightV231: !0,
+          concurrencyDefaultsV245: !0,
+          videoModel: "veo_3_1_lite_low_priority",
+          aspectRatio: "PORTRAIT",
+          generationType: "IMAGE_TO_VIDEO",
+          generationTypeDefaultsV245: !0,
+          outputsPerPrompt: 1,
+          singleOutputMode: !0,
+          singleOutputDefaultsV243: !0,
+          submitPipelineFixV255: !0,
+          generationRounds: 3,
+          multiRoundDefaultsV242: !0,
+          downloadFolder: "",
+          autoRetry: !0,
+          retryRounds: 3,
+          retryRoundWait: 30,
+          retryDefaultsV237: !0,
+          download: !0,
+        };
+      }
       function N9(t, e = 5e3, n = 50) {
         return new Promise((o, i) => {
           if (window[t]?.id) return void o(window[t]);
@@ -3169,7 +3206,7 @@
                     ),
                   ));
             }, n);
-          });
+        });
       }
       function fbFirefoxSendMessage(t, e) {
         const n = `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -3751,7 +3788,7 @@
           .filter(Boolean);
         for (const n of e) {
           const o = n.match(
-            /([^\\/:*?"<>|\r\n]{1,200}\.(?:jpe?g|png|webp|gif|bmp|heic|heif|avif))/i,
+            /([^\\/:*?"<>|\r\n]{1,200}\.(?:jpe?g|jfif|png|webp|gif|bmp|heic|heif|avif|tiff?|svg))/i,
           );
           if (o) return o[1].trim();
         }
@@ -8166,7 +8203,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
             i.highlight.row,
             i.highlight.col,
             e,
-            n,
+            Z.jsx("span", { className: "fb-image-name", children: n }),
             o,
           );
           if (
@@ -30902,6 +30939,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         const { primaryMediaKey: e, displayName: n } = t ?? {};
         if (!e) return;
         return Z.jsxs("div", {
+          className: "fb-image-cell",
           style: { overflow: "hidden", textOverflow: "ellipsis" },
           children: [
             Z.jsx(Ve.Tooltip, {
@@ -30911,6 +30949,7 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
               }),
               children: Z.jsx(fbResilientImage, {
                 id: e,
+                className: "fb-cell-image",
                 style: { float: "left" },
               }),
             }),
@@ -31332,7 +31371,13 @@ ${V}`;
           { value: "VIDEO_REFERENCES", label: "素材" },
           { value: "VIDEO_FRAMES", label: "帧" },
         ],
-        FB_SECONDS_OPTIONS = [4, 6, 8].map((t) => ({
+        FB_VIDEO_TYPE_OPTIONS = [
+          { value: "IMAGE_TO_VIDEO", label: "图生视频" },
+          { value: "TEXT_TO_VIDEO", label: "文生视频" },
+        ],
+        FB_BASE_SECONDS = [4, 6, 8],
+        FB_OMNI_SECONDS = [4, 6, 8, 10],
+        FB_SECONDS_OPTIONS = FB_OMNI_SECONDS.map((t) => ({
           value: t,
           label: `${t}秒`,
         })),
@@ -31345,11 +31390,24 @@ ${V}`;
           success: "已完成",
           partial_success: "部分完成",
           failed: "生成失败",
+          configuration_failed: "提交配置失败",
           validation_failed: "信息不完整",
           missing_image: "未找到图片",
           download_failed: "下载失败",
           stopped: "已停止",
-        };
+        },
+        FB_ACTIVE_STATUSES = new Set([
+          "submitting",
+          "generating",
+          "downloading",
+        ]),
+        FB_CAPACITY_STATUSES = new Set([...FB_ACTIVE_STATUSES, "ready"]);
+      function fbIsActiveStatus(t) {
+        return FB_ACTIVE_STATUSES.has(String(t || ""));
+      }
+      function fbUsesCapacity(t) {
+        return FB_CAPACITY_STATUSES.has(String(t || ""));
+      }
       function fbNewId() {
         return (
           globalThis.crypto?.randomUUID?.() ||
@@ -31372,20 +31430,233 @@ ${V}`;
             ? "VIDEO_REFERENCES"
             : t || "";
       }
-      function fbDefaultMode() {
-        return fbMode(zd().defaultRowMode || "VIDEO_REFERENCES");
-      }
       function fbEffectiveMode(t) {
-        return fbMode(t || fbDefaultMode());
+        return fbMode(t);
       }
-      function fbFrameSeconds(t) {
-        const e = Number(t);
-        return [4, 6, 8].includes(e) ? e : 8;
+      function fbIsOmniModel(t = zd().videoModel) {
+        const e = String(t ?? "")
+            .trim()
+            .toLowerCase(),
+          n = String(O9[t] || "").toLowerCase();
+        return e === "abra" || e.startsWith("omni") || n.includes("omni");
+      }
+      function fbNormalizedModelToken(t) {
+        return String(t ?? "")
+          .normalize("NFKC")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "");
+      }
+      function fbVideoPickerOptionForModel(t, e = zd().videoModel) {
+        const n = (Array.isArray(t?.videoModelPickerOptions)
+            ? t.videoModelPickerOptions
+            : []
+          ).flatMap((t) => (Array.isArray(t?.options) ? t.options : [t])),
+          o = String(e ?? "").trim(),
+          i = fbIsOmniModel(o),
+          s = new Set(
+            [o, O9[o]]
+              .filter(Boolean)
+              .map(fbNormalizedModelToken)
+              .filter(Boolean),
+          );
+        return n.find((t) => {
+          const e = [
+              t?.modelFamilyId,
+              t?.id,
+              t?.value,
+              t?.familyId,
+              ...Object.values(t?.durationToFamilyId || {}),
+            ]
+              .filter(Boolean)
+              .map((t) => String(t)),
+            n = [
+              t?.label,
+              t?.name,
+              t?.title,
+              t?.displayName,
+              t?.modelName,
+              t?.modelDisplayName,
+            ]
+              .filter(Boolean)
+              .map((t) => String(t));
+          const r = [...e, ...n].map(fbNormalizedModelToken);
+          return (
+            e.includes(o) ||
+            r.some((t) => s.has(t)) ||
+            (i &&
+              (e.some((t) => /(?:^|[_-])abra(?:$|[_-])|omni/i.test(t)) ||
+                n.some((t) => /omni/i.test(t))))
+          );
+        });
+      }
+      function fbResolveVideoModelFamilyId(t, e, n) {
+        const o = fbVideoPickerOptionForModel(t, e),
+          i = o?.durationToFamilyId || {},
+          s = i?.[n] ?? i?.[String(n)] ?? o?.modelFamilyId ?? e;
+        return String(s || e || "veo_3_1_lite_low_priority");
+      }
+      function fbDurationIsDisabled(t, e) {
+        return (Array.isArray(t?.disabledDurations)
+          ? t.disabledDurations
+          : []
+        ).some((t) => Number(t?.duration ?? t?.value ?? t) === Number(e));
+      }
+      function fbVideoModelKeyIsReady(t) {
+        const e = t?.currentModelKeys;
+        return (
+          !e ||
+          typeof e !== "object" ||
+          !Object.prototype.hasOwnProperty.call(e, "videoModelKey") ||
+          !!e.videoModelKey
+        );
+      }
+      function fbAllowedSeconds(t = zd().videoModel) {
+        return fbIsOmniModel(t) ? FB_OMNI_SECONDS : FB_BASE_SECONDS;
+      }
+      function fbParsedFrameSeconds(t, e = zd().videoModel) {
+        const n = String(t ?? "")
+            .normalize("NFKC")
+            .trim()
+            .replace(/\s*(?:秒|s|sec(?:onds?)?)\s*$/i, ""),
+          o = Number(n);
+        return fbAllowedSeconds(e).includes(o) ? o : "";
+      }
+      function fbFrameSeconds(t, e = zd().videoModel) {
+        return fbParsedFrameSeconds(t, e) || 8;
+      }
+      function fbGenerationType(t = zd().generationType) {
+        return ["IMAGE_TO_VIDEO", "TEXT_TO_VIDEO", "MIXED"].includes(t)
+          ? t
+          : "IMAGE_TO_VIDEO";
+      }
+      function fbMaxInFlight(t = zd().maxInFlight) {
+        return Math.min(12, Math.max(1, Number(t) || 4));
+      }
+      function fbVideoType(t) {
+        const e = String(t ?? "")
+          .normalize("NFKC")
+          .trim()
+          .toLowerCase()
+          .replace(/[\s_\-/]+/g, "");
+        if (["imagetovideo", "i2v", "图生视频", "图生", "图转视频"].includes(e))
+          return "IMAGE_TO_VIDEO";
+        if (["texttovideo", "t2v", "文生视频", "文生", "文转视频"].includes(e))
+          return "TEXT_TO_VIDEO";
+        return "";
+      }
+      function fbDefaultVideoType(t = fbGenerationType()) {
+        return t === "TEXT_TO_VIDEO" ? "TEXT_TO_VIDEO" : "IMAGE_TO_VIDEO";
+      }
+      function fbLegacyVideoType(t = {}, e = fbGenerationType()) {
+        const n = fbVideoType(t?.videoType);
+        if (n) return n;
+        if (e === "TEXT_TO_VIDEO") return "TEXT_TO_VIDEO";
+        return e === "MIXED" &&
+          fbEffectiveMode(t?.mode) === "VIDEO_REFERENCES" &&
+          !!fbParsedFrameSeconds(t?.seconds)
+          ? "TEXT_TO_VIDEO"
+          : "IMAGE_TO_VIDEO";
+      }
+      function fbRowVideoType(t = {}, e = fbGenerationType()) {
+        const n = String(t?.videoType ?? "").trim(),
+          o = fbVideoType(n);
+        return o || (n ? "" : fbLegacyVideoType(t, e));
+      }
+      function fbTransitionRowVideoType(t = {}, e) {
+        const n = fbVideoType(e) || "IMAGE_TO_VIDEO",
+          o = fbRowVideoType(t),
+          i = fbEffectiveMode(t.mode),
+          s = fbParsedFrameSeconds(t.seconds),
+          r = fbParsedFrameSeconds(t.textSeconds),
+          materialDuration = fbIsOmniModel();
+        if (n === "TEXT_TO_VIDEO") {
+          const a =
+              o === "TEXT_TO_VIDEO"
+                ? fbEffectiveMode(t.savedImageMode)
+                : i,
+            l =
+              o === "TEXT_TO_VIDEO"
+                ? fbParsedFrameSeconds(t.savedImageSeconds)
+                : i === "VIDEO_FRAMES" ||
+                    (i === "VIDEO_REFERENCES" && materialDuration)
+                  ? s || 8
+                  : "",
+            c = o === "TEXT_TO_VIDEO" ? s || r || 8 : r || 8;
+          return {
+            ...t,
+            videoType: "TEXT_TO_VIDEO",
+            savedImageMode: a || t.savedImageMode || "VIDEO_REFERENCES",
+            savedImageSeconds: l || "",
+            textSeconds: c,
+            mode: "VIDEO_REFERENCES",
+            seconds: c,
+          };
+        }
+        const a =
+            o === "TEXT_TO_VIDEO"
+              ? fbEffectiveMode(t.savedImageMode) || "VIDEO_REFERENCES"
+              : i,
+          l =
+            a === "VIDEO_FRAMES" ||
+            (a === "VIDEO_REFERENCES" && materialDuration)
+              ? o === "TEXT_TO_VIDEO"
+                ? fbParsedFrameSeconds(t.savedImageSeconds) || 8
+                : s || 8
+              : "";
+        return {
+          ...t,
+          videoType: "IMAGE_TO_VIDEO",
+          textSeconds:
+            o === "TEXT_TO_VIDEO" ? s || r || 8 : r || "",
+          mode: a,
+          seconds: l,
+        };
+      }
+      function fbEffectiveRowMode(t, e = fbGenerationType()) {
+        return fbRowVideoType(t, e) === "TEXT_TO_VIDEO"
+          ? "VIDEO_REFERENCES"
+          : fbEffectiveMode(t?.mode);
+      }
+      function fbIsTextVideoRow(t, e = fbGenerationType()) {
+        return fbRowVideoType(t, e) === "TEXT_TO_VIDEO";
+      }
+      function fbRowSeconds(t, e = fbGenerationType()) {
+        const n = fbEffectiveRowMode(t, e),
+          o = fbParsedFrameSeconds(t?.seconds),
+          i = fbRowVideoType(t, e);
+        if (i === "TEXT_TO_VIDEO")
+          return o || fbParsedFrameSeconds(t?.textSeconds) || 8;
+        if (
+          n === "VIDEO_FRAMES" ||
+          (n === "VIDEO_REFERENCES" && fbIsOmniModel())
+        )
+          return o || 8;
+        return "";
+      }
+      function fbUsesSelectableDuration(
+        t,
+        e = fbGenerationType(),
+        n = zd().videoModel,
+      ) {
+        const o = fbEffectiveRowMode(t, e),
+          i = fbRowVideoType(t, e);
+        return (
+          i === "TEXT_TO_VIDEO" ||
+          o === "VIDEO_FRAMES" ||
+          (o === "VIDEO_REFERENCES" && fbIsOmniModel(n))
+        );
       }
       function fbSignedRandomSeconds(t, e, n = 1) {
         const o = Math.max(n, Number(t) || n),
           i = Math.max(0, Number(e) || 0);
         return Math.max(n, o + (Math.random() * 2 - 1) * i);
+      }
+      function fbRetryableDownloadError(t) {
+        const e = String(t || "").toUpperCase();
+        return !/(USER_CANCELED|FILE_NO_SPACE|FILE_ACCESS_DENIED|FILE_TOO_LARGE|INVALID_FILENAME|登录已过期)/.test(
+          e,
+        );
       }
       function fbHasContent(t) {
         return !!(
@@ -31404,6 +31675,112 @@ ${V}`;
             t.status.length > 0 &&
             t.status.every((e) => e === "success"))
         );
+      }
+      function fbGenerationRounds(t) {
+        return Math.min(10, Math.max(1, Number(t) || 3));
+      }
+      function fbOutputsPerRound(t) {
+        return Math.min(4, Math.max(1, Number(t) || 1));
+      }
+      function fbConfiguredOutputsPerRound(t = {}) {
+        return t.singleOutputMode !== !1
+          ? 1
+          : fbOutputsPerRound(t.outputsPerPrompt);
+      }
+      function fbHasGenerationPlan(t) {
+        return Number(t?.planRounds) > 0 && Number(t?.planOutputsPerRound) > 0;
+      }
+      function fbGenerationPlanProgress(t = {}, e = {}) {
+        const n = fbGenerationRounds(t.planRounds || e.generationRounds),
+          o = fbOutputsPerRound(
+            t.planOutputsPerRound || e.outputsPerPrompt,
+          ),
+          i = Math.min(n, Math.max(0, Number(t.baseRoundsCompleted) || 0)),
+          s = Math.max(0, Number(t.repairRoundsCompleted) || 0),
+          r = Math.max(0, Number(t.totalSuccessfulOutputs) || 0),
+          a = Math.max(0, Number(t.totalFailedOutputs) || 0),
+          l = Math.max(1, Number(t.targetSuccessfulOutputs) || n * o),
+          c = Math.max(0, l - r);
+        return {
+          rounds: n,
+          outputsPerRound: o,
+          baseDone: i,
+          repairDone: s,
+          success: r,
+          failed: a,
+          target: l,
+          missing: c,
+          baseFinished: i >= n,
+          targetMet: i >= n && c === 0,
+        };
+      }
+      function fbNewGenerationPlan(t = {}) {
+        const e = fbGenerationRounds(t.generationRounds),
+          n = fbConfiguredOutputsPerRound(t);
+        return {
+          planRounds: e,
+          planOutputsPerRound: n,
+          targetSuccessfulOutputs: e * n,
+          baseRoundsCompleted: 0,
+          repairRoundsCompleted: 0,
+          totalSuccessfulOutputs: 0,
+          totalFailedOutputs: 0,
+          allResults: [],
+          allDownloadedFiles: [],
+          planPhase: "",
+          planRound: 0,
+          planBatchOutputs: n,
+          planComplete: !1,
+          planTargetMet: !1,
+          planStartedAt: Date.now(),
+          planCompletedAt: 0,
+        };
+      }
+      function fbResetV254UnsubmittedAttempts(t = {}) {
+        if (!fbHasGenerationPlan(t) || !(Number(t.baseRoundsCompleted) > 0))
+          return t;
+        const e = [
+            ...(Array.isArray(t.generationIds) ? t.generationIds : []),
+            ...(Array.isArray(t.successfulGenerationIds)
+              ? t.successfulGenerationIds
+              : []),
+            ...(Array.isArray(t.failedGenerationIds)
+              ? t.failedGenerationIds
+              : []),
+          ].some((e) => e && !String(e).startsWith("__flow_")),
+          n =
+            (Array.isArray(t.results) && t.results.length > 0) ||
+            (Array.isArray(t.allResults) && t.allResults.length > 0) ||
+            Number(t.totalSuccessfulOutputs) > 0;
+        if (e || n) return t;
+        return {
+          ...t,
+          status: "pending",
+          message:
+            "已修复旧版“未实际提交却累计轮次”的记录；目标轮次已恢复，等待重新提交",
+          attempt: 0,
+          expectedOutputs: 0,
+          successfulOutputs: 0,
+          failedOutputs: 0,
+          generationIds: [],
+          successfulGenerationIds: [],
+          failedGenerationIds: [],
+          outputFailureMessages: [],
+          baseRoundsCompleted: 0,
+          repairRoundsCompleted: 0,
+          totalSuccessfulOutputs: 0,
+          totalFailedOutputs: 0,
+          allResults: [],
+          allDownloadedFiles: [],
+          planPhase: "",
+          planRound: 0,
+          planComplete: !1,
+          planTargetMet: !1,
+          planCompletedAt: 0,
+          completedAt: 0,
+          retryScheduledAt: 0,
+          failedAt: 0,
+        };
       }
       function fbShouldStoreRow(t) {
         return fbHasContent(t) || fbIsCompleted(t);
@@ -31496,7 +31873,9 @@ ${V}`;
             (t.endImage?.displayName ? String(t.endImage.displayName) : ""),
           i = t.prompt ?? t.text ?? "",
           s = t.mode || t.footageType ? fbMode(t.mode || t.footageType) : "",
-          r = Number(t.seconds || t.sec || 0) || "",
+          r = String(t.seconds ?? t.sec ?? "").trim()
+            ? fbFrameSeconds(t.seconds ?? t.sec)
+            : "",
           a = Array.isArray(t.status)
             ? t.status.length && t.status.every((l) => l === "success")
               ? "success"
@@ -31504,7 +31883,7 @@ ${V}`;
                 ? "failed"
                 : "pending"
             : t.status || "pending";
-        return {
+        const normalized = {
           ...c0,
           id: t.id || fbNewId(),
           imageName: String(n).trim(),
@@ -31512,13 +31891,20 @@ ${V}`;
           clipName: String(t.clipName || "").trim(),
           prompt: String(i),
           mode: s,
-          seconds: s === "VIDEO_REFERENCES" ? "" : r,
+          seconds: r,
           status: a,
           message: Array.isArray(t.message)
             ? t.message.filter(Boolean).join("；")
             : t.message || "",
           rowNumber: e + 1,
         };
+        const rawVideoType = String(normalized.videoType ?? "").trim();
+        if (rawVideoType && !fbVideoType(rawVideoType))
+          return { ...normalized, videoType: rawVideoType };
+        return fbTransitionRowVideoType(
+          normalized,
+          fbRowVideoType(normalized, fbGenerationType()),
+        );
       }
       function fbNormalizeRows(t) {
         return (Array.isArray(t) ? t : [])
@@ -31646,15 +32032,24 @@ ${V}`;
         "prompt",
         "mode",
         "seconds",
+        "videoType",
       ]);
       function fbInputReconcilePatches(t, e) {
         const n = new Map(),
           o = new Set(),
+          changedFields = new Map(),
+          previousValues = new Map(),
           i = (l, c, h) => n.set(`${l}:${c}`, [l, c, h]);
         for (const l of t || []) {
-          const [c, h, , d] = l;
+          const [c, h, previousValue, d] = l;
           if (!FB_GENERATION_INPUT_FIELDS.has(h)) continue;
           o.add(c);
+          (changedFields.get(c) ||
+            (changedFields.set(c, new Set()), changedFields.get(c)))?.add(h);
+          const rowPreviousValues =
+            previousValues.get(c) ||
+            (previousValues.set(c, new Map()), previousValues.get(c));
+          rowPreviousValues.has(h) || rowPreviousValues.set(h, previousValue);
           const u = e.getSourceDataAtRow(c) ?? {};
           if (h === "imageName" && u.image) {
             const f = fbStemKey(d),
@@ -31669,8 +32064,12 @@ ${V}`;
         }
         for (const l of o) {
           const c = e.getSourceDataAtRow(l) ?? {},
-            h = fbEffectiveMode(c.mode),
-            d = Number(c.seconds);
+            generationType = fbGenerationType(),
+            fields = changedFields.get(l) || new Set(),
+            rawVideoType = String(c.videoType ?? "").trim(),
+            parsedVideoType = fbVideoType(rawVideoType),
+            videoType = parsedVideoType ||
+              (rawVideoType ? rawVideoType : fbDefaultVideoType(generationType));
           (fbIsCompleted(c) ||
             (i(l, "status", "pending"),
             i(l, "message", ""),
@@ -31682,6 +32081,22 @@ ${V}`;
             i(l, "successfulOutputs", 0),
             i(l, "failedOutputs", 0),
             i(l, "outputFailureMessages", []),
+            i(l, "planRounds", 0),
+            i(l, "planOutputsPerRound", 0),
+            i(l, "targetSuccessfulOutputs", 0),
+            i(l, "baseRoundsCompleted", 0),
+            i(l, "repairRoundsCompleted", 0),
+            i(l, "totalSuccessfulOutputs", 0),
+            i(l, "totalFailedOutputs", 0),
+            i(l, "allResults", []),
+            i(l, "allDownloadedFiles", []),
+            i(l, "planPhase", ""),
+            i(l, "planRound", 0),
+            i(l, "planBatchOutputs", 0),
+            i(l, "planComplete", !1),
+            i(l, "planTargetMet", !1),
+            i(l, "planStartedAt", 0),
+            i(l, "planCompletedAt", 0),
             i(l, "generationId", ""),
             i(l, "downloadFileBase", ""),
             i(l, "downloadFolder", ""),
@@ -31690,9 +32105,76 @@ ${V}`;
             i(l, "generatedAt", 0),
             i(l, "failedAt", 0),
             i(l, "retryScheduledAt", 0)),
-            h === "VIDEO_FRAMES"
-              ? [4, 6, 8].includes(d) || i(l, "seconds", 8)
-              : i(l, "seconds", ""));
+            i(l, "videoType", videoType));
+          if (rawVideoType && !parsedVideoType) {
+            fbIsCompleted(c) ||
+              (i(l, "status", "validation_failed"),
+              i(
+                l,
+                "message",
+                `生成方式“${rawVideoType}”无法识别，请填写“图生视频”或“文生视频”`,
+              ));
+            continue;
+          }
+          let reconciled = { ...c, videoType };
+          if (fields.has("videoType")) {
+            const previousRow = { ...c },
+              rowPreviousValues = previousValues.get(l) || new Map();
+            for (const [field, previousValue] of rowPreviousValues)
+              previousRow[field] = previousValue;
+            const previousRaw = previousRow.videoType,
+              previousType =
+                fbVideoType(previousRaw) ||
+                fbRowVideoType(previousRow, generationType);
+            reconciled = fbTransitionRowVideoType(
+              { ...previousRow, videoType: previousType },
+              videoType,
+            );
+            if (fields.has("mode") && videoType === "IMAGE_TO_VIDEO")
+              reconciled.mode = fbEffectiveMode(c.mode);
+            if (fields.has("seconds")) {
+              const pastedSeconds = fbParsedFrameSeconds(c.seconds);
+              if (videoType === "TEXT_TO_VIDEO")
+                ((reconciled.seconds = pastedSeconds || 8),
+                  (reconciled.textSeconds = pastedSeconds || 8));
+              else if (
+                fbEffectiveMode(reconciled.mode) === "VIDEO_FRAMES" ||
+                (fbEffectiveMode(reconciled.mode) === "VIDEO_REFERENCES" &&
+                  fbIsOmniModel())
+              )
+                reconciled.seconds = pastedSeconds || 8;
+              else reconciled.seconds = "";
+            }
+            for (const field of [
+              "savedImageMode",
+              "savedImageSeconds",
+              "textSeconds",
+            ])
+              i(l, field, reconciled[field] ?? "");
+            (i(l, "mode", reconciled.mode ?? ""),
+              i(l, "seconds", reconciled.seconds ?? ""));
+          }
+          const h = fbEffectiveRowMode(reconciled, generationType),
+            d = fbParsedFrameSeconds(reconciled.seconds);
+          videoType === "TEXT_TO_VIDEO"
+            ? (i(l, "mode", "VIDEO_REFERENCES"),
+              i(
+                l,
+                "seconds",
+                d || fbParsedFrameSeconds(reconciled.textSeconds) || 8,
+              ),
+              i(
+                l,
+                "textSeconds",
+                d || fbParsedFrameSeconds(reconciled.textSeconds) || 8,
+              ))
+            : (["VIDEO_REFERENCES", "VIDEO_FRAMES"].includes(h) &&
+                reconciled.mode !== h &&
+                i(l, "mode", h),
+              h === "VIDEO_FRAMES" ||
+              (h === "VIDEO_REFERENCES" && fbIsOmniModel())
+                ? i(l, "seconds", d || 8)
+                : i(l, "seconds", ""));
         }
         return [...n.values()];
       }
@@ -31702,8 +32184,11 @@ ${V}`;
           e = decodeURIComponent(e);
         } catch {}
         return e
+          .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+          .replace(/[?#].*$/, "")
           .replace(/^.*[\\/]/, "")
-          .normalize("NFC")
+          .normalize("NFKC")
+          .replace(/[\u200B-\u200D\uFEFF]/g, "")
           .replace(/\s+/g, " ")
           .trim();
       }
@@ -31712,7 +32197,7 @@ ${V}`;
       }
       function fbStemKey(t) {
         return fbNameKey(t).replace(
-          /\.(?:jpe?g|jfif|png|webp|gif|bmp|avif|heic|heif|tiff?)$/i,
+          /(?:\.(?:jpe?g|jfif|png|webp|gif|bmp|avif|heic|heif|tiff?|svg))+$/i,
           "",
         );
       }
@@ -31806,6 +32291,9 @@ ${V}`;
       }
       function fbStatusRenderer({ value: t, instance: e, row: n }) {
         const o = e.getSourceDataAtRow(n) ?? {},
+          plan = fbHasGenerationPlan(o)
+            ? fbGenerationPlanProgress(o)
+            : null,
           expected = Math.min(
             4,
             Math.max(1, Number(o.expectedOutputs) || 1),
@@ -31820,8 +32308,9 @@ ${V}`;
               ? o.failedGenerationIds.length
               : 0,
           ),
-          progress =
-            expected > 1 &&
+          progress = plan
+            ? ` · 轮次${plan.baseDone}/${plan.rounds} · 成功${plan.success}/${plan.target}个${plan.missing ? ` · 待补${plan.missing}个` : ""}`
+            : expected > 1 &&
             [
               "generating",
               "downloading",
@@ -31836,7 +32325,15 @@ ${V}`;
                 )}个`
               : "",
           i = `${FB_STATUS_LABELS[t] || (t ? String(t) : "")}${progress}`,
-          s = o.attempt > 1 ? ` · 第${o.attempt}次` : "",
+          s = plan
+            ? o.planPhase === "repair"
+              ? ` · 补跑第${o.planRound}轮`
+              : o.planPhase === "base"
+                ? ` · 正在跑第${o.planRound}轮`
+                : ""
+            : o.attempt > 1
+              ? ` · 第${o.attempt}次`
+              : "",
           r = ["success", "ready", "partial_success"].includes(t)
             ? "✓"
             : [
@@ -31864,29 +32361,39 @@ ${V}`;
       function fbModeRenderer({ value: t, instance: e, row: n }) {
         const o = e.getSourceDataAtRow(n) ?? {};
         if (!fbHasContent(o)) return Z.jsx("div", {});
-        const i = fbEffectiveMode(t || o.mode);
+        const generationType = fbGenerationType(),
+          i = fbEffectiveRowMode({ ...o, mode: t || o.mode }, generationType),
+          textOnly = fbIsTextVideoRow(o, generationType),
+          allowedSeconds = fbAllowedSeconds();
         return Z.jsxs("select", {
-          className: "fb-cell-select",
+          className: "fb-cell-select fb-mode-select",
           value: i,
-          title: "选择素材模式或帧模式",
+          disabled: textOnly,
+          title: textOnly
+            ? "文生视频仅支持素材模式"
+            : "选择素材模式或帧模式",
           onMouseDown: (s) => s.stopPropagation(),
           onClick: (s) => s.stopPropagation(),
           onChange: (s) => {
             const r = s.target.value,
-              a = Number(o.seconds);
+              a = Number(o.seconds),
+              seconds =
+                r === "VIDEO_FRAMES" ||
+                (r === "VIDEO_REFERENCES" && fbIsOmniModel())
+                  ? allowedSeconds.includes(a)
+                    ? a
+                    : 8
+                  : "";
             e.setDataAtRowProp(
               [
                 [n, "mode", r],
-                [
-                  n,
-                  "seconds",
-                  r === "VIDEO_FRAMES" ? ([4, 6, 8].includes(a) ? a : 8) : "",
-                ],
+                [n, "seconds", seconds],
               ],
               "edit",
             );
           },
           children: [
+            Z.jsx("option", { value: "", disabled: !0, children: "请选择" }),
             Z.jsx("option", {
               value: "VIDEO_REFERENCES",
               children: "素材",
@@ -31897,20 +32404,79 @@ ${V}`;
       }
       function fbSecondsRenderer({ value: t, instance: e, row: n }) {
         const o = e.getSourceDataAtRow(n) ?? {};
-        if (fbEffectiveMode(o.mode) !== "VIDEO_FRAMES") return Z.jsx("div", {});
-        const i = fbFrameSeconds(t);
+        if (!fbHasContent(o)) return Z.jsx("div", {});
+        const
+          generationType = fbGenerationType(),
+          mode = fbEffectiveRowMode(o, generationType),
+          videoType = fbRowVideoType(o, generationType),
+          allowedSeconds = fbAllowedSeconds();
+        if (!fbUsesSelectableDuration(o, generationType))
+          return Z.jsx("div", {});
+        const i = fbRowSeconds({ ...o, seconds: t }, generationType),
+          secondsLabel = allowedSeconds.join("、");
         return Z.jsxs("select", {
-          className: "fb-cell-select",
+          className: "fb-cell-select fb-seconds-select",
           value: i,
-          title: "帧模式时长：4、6或8秒",
+          title:
+            videoType === "TEXT_TO_VIDEO"
+              ? `文生视频时长：${secondsLabel}秒`
+              : mode === "VIDEO_REFERENCES"
+                ? `Omni 素材模式时长：${secondsLabel}秒`
+                : `帧模式图生视频时长：${secondsLabel}秒`,
           onMouseDown: (s) => s.stopPropagation(),
           onClick: (s) => s.stopPropagation(),
-          onChange: (s) =>
-            e.setDataAtRowProp(n, "seconds", Number(s.target.value), "edit"),
+          onChange: (s) => {
+            const r = Number(s.target.value),
+              a = [[n, "seconds", r]];
+            videoType === "TEXT_TO_VIDEO" && a.push([n, "textSeconds", r]);
+            e.setDataAtRowProp(a, "edit");
+          },
+          children: allowedSeconds.map((s) =>
+            Z.jsx("option", { value: s, children: `${s}秒` }, s),
+          ),
+        });
+      }
+      function fbVideoTypeRenderer({ value: t, instance: e, row: n }) {
+        const o = e.getSourceDataAtRow(n) ?? {};
+        if (!fbHasContent(o)) return Z.jsx("div", {});
+        const rawVideoType = String(t ?? o.videoType ?? "").trim(),
+          parsedVideoType = fbVideoType(rawVideoType),
+          invalidVideoType = !!rawVideoType && !parsedVideoType,
+          i = parsedVideoType || fbDefaultVideoType();
+        return Z.jsxs("select", {
+          className: `fb-cell-select fb-video-type-select fb-video-type-${invalidVideoType ? "invalid" : i === "TEXT_TO_VIDEO" ? "text" : "image"}`,
+          value: invalidVideoType ? rawVideoType : i,
+          title: invalidVideoType
+            ? `无法识别“${rawVideoType}”；可下拉修正，也可整列粘贴“图生视频/文生视频”`
+            : "明确指定本行使用图生视频还是文生视频；支持从表格整列粘贴",
+          onMouseDown: (s) => s.stopPropagation(),
+          onClick: (s) => s.stopPropagation(),
+          onChange: (s) => {
+            const r = fbTransitionRowVideoType(o, s.target.value),
+              a = [
+                "videoType",
+                "mode",
+                "seconds",
+                "savedImageMode",
+                "savedImageSeconds",
+                "textSeconds",
+              ].map((l) => [n, l, r[l] ?? ""]);
+            e.setDataAtRowProp(a, "edit");
+          },
           children: [
-            Z.jsx("option", { value: 4, children: "4秒" }),
-            Z.jsx("option", { value: 6, children: "6秒" }),
-            Z.jsx("option", { value: 8, children: "8秒" }),
+            invalidVideoType &&
+              Z.jsx(
+                "option",
+                {
+                  value: rawVideoType,
+                  disabled: !0,
+                  children: `无效：${rawVideoType}`,
+                },
+                "invalid",
+              ),
+            ...FB_VIDEO_TYPE_OPTIONS.map((s) =>
+              Z.jsx("option", { value: s.value, children: s.label }, s.value),
+            ),
           ],
         });
       }
@@ -31921,11 +32487,22 @@ ${V}`;
           children: String(t ?? ""),
         });
       }
+      function fbImageNameRenderer({ value: t, instance: e, row: n }) {
+        const o = e.getSourceDataAtRow(n) ?? {},
+          i = fbIsTextVideoRow(o);
+        return Z.jsx("div", {
+          className: `fb-text-cell${i ? " fb-text-video-disabled-cell" : ""}`,
+          title: i ? "当前分镜按文生视频运行，图片名不会参与生成" : String(t ?? ""),
+          children: String(t ?? ""),
+        });
+      }
       function fbRetryRenderer({ instance: t, row: e }) {
-        const n = t.getSourceDataAtRow(e) ?? {};
+        const n = t.getSourceDataAtRow(e) ?? {},
+          o = fbIsActiveStatus(n.status);
         return Z.jsx("button", {
           className: "fb-cell-button",
-          disabled: !fbHasContent(n),
+          disabled: !fbHasContent(n) || o,
+          title: o ? "本行正在运行，结束后才能手动重生" : "重新生成本行",
           onMouseDown: (o) => o.stopPropagation(),
           onClick: (o) => {
             (o.preventDefault(),
@@ -31937,10 +32514,16 @@ ${V}`;
       }
       function fbDownloadRenderer({ instance: t, row: e }) {
         const n = t.getSourceDataAtRow(e) ?? {},
-          o = Array.isArray(n.results) && n.results.length > 0;
+          o = Array.isArray(n.results) && n.results.length > 0,
+          i = fbIsActiveStatus(n.status);
         return Z.jsx("button", {
           className: "fb-cell-button fb-cell-button-download",
-          disabled: !o,
+          disabled: !o || i,
+          title: i
+            ? "本行正在运行，结束后才能手动下载"
+            : o
+              ? "下载本行已生成的视频"
+              : "本行还没有可下载的视频",
           onMouseDown: (i) => i.stopPropagation(),
           onClick: (i) => {
             (i.preventDefault(),
@@ -31952,12 +32535,49 @@ ${V}`;
       }
       const fbModeEditor = jk(FB_MODE_OPTIONS),
         fbSecondsEditor = jk(FB_SECONDS_OPTIONS);
+      function fbGridColumnWidths() {
+        const modalBodyWidth = Number(
+            document.querySelector(".fb-full-modal .ant-modal-body")
+              ?.clientWidth,
+          ),
+          hasModalBodyWidth =
+            Number.isFinite(modalBodyWidth) && modalBodyWidth > 0,
+          t = [
+            hasModalBodyWidth ? modalBodyWidth : null,
+            window.visualViewport?.width,
+            window.innerWidth,
+            document.documentElement?.clientWidth,
+          ]
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n) && n > 0),
+          e = t.length ? Math.min(...t) : 1280,
+          n = Math.max(
+            420,
+            Math.floor(e - (hasModalBodyWidth ? 48 : 96)),
+          ),
+          i = [104, 104, 92, 84, 118, 150, 62, 62, 92, 125, 60, 60],
+          s = i.reduce((a, l) => a + l, 0);
+        let r;
+        if (n <= s) {
+          const a = n / s;
+          r = i.map((l) => Math.max(24, Math.floor(l * a)));
+          r[5] += n - r.reduce((l, c) => l + c, 0);
+        } else {
+          const a = [0.02, 0.02, 0.04, 0.03, 0.22, 0.32, 0.01, 0.01, 0.04, 0.25, 0.02, 0.02],
+            l = n - s;
+          r = i.map((c, h) => c + Math.floor(l * a[h]));
+          r[5] += n - r.reduce((c, h) => c + h, 0);
+        }
+        return r;
+      }
       function FseV2({
         hotRef: t,
         getHot: e,
         onRowsChanged: n,
         onLoadImages: o,
         rows: fbRows,
+        materialOnly: fbMaterialOnly,
+        generationType: fbGenerationTypeValue,
       }) {
         function i() {
           const l = e();
@@ -31970,10 +32590,35 @@ ${V}`;
           if (!l || c === "loadData") return;
           const h = e();
           if (!h) return;
+          const generationType = fbGenerationType(fbGenerationTypeValue);
+          if (fbMaterialOnly && c !== "fb-material-only") {
+            const d = new Set(
+                l.map(([u]) => Number(u)).filter((u) => Number.isInteger(u)),
+              ),
+              u = [];
+            for (const f of d) {
+              const g = h.getSourceDataAtRow(f) ?? {};
+              if (!fbHasContent(g)) continue;
+              g.mode !== "VIDEO_REFERENCES" &&
+                u.push([f, "mode", "VIDEO_REFERENCES"]);
+              const seconds =
+                fbIsTextVideoRow(g, generationType) || fbIsOmniModel()
+                  ? fbRowSeconds(
+                      { ...g, mode: "VIDEO_REFERENCES" },
+                      generationType,
+                    )
+                  : "";
+              g.seconds !== seconds && u.push([f, "seconds", seconds]);
+            }
+            u.length && h.setDataAtRowProp(u, "fb-material-only");
+          }
           if (c !== "fb-input-reconcile") {
             const d = fbInputReconcilePatches(l, h);
             d.length && h.setDataAtRowProp(d, "fb-input-reconcile");
           }
+          c !== "fb-input-reconcile" &&
+            l.some(([, d]) => d === "videoType") &&
+            h7((d) => ({ ...d, generationType: "MIXED" }));
           (n(h.getSourceData()), i());
         }
         function r(l, c) {
@@ -31986,6 +32631,18 @@ ${V}`;
         function fbExpandRowsBeforePaste(l, c) {
           const h = e();
           if (!h || !Array.isArray(l) || !l.length) return;
+          const startCol = Math.max(0, Number(c?.[0]?.startCol) || 0);
+          for (const row of l)
+            for (let columnOffset = 0; columnOffset < row.length; columnOffset++) {
+              const prop = h.colToProp(startCol + columnOffset);
+              if (prop === "mode") row[columnOffset] = fbMode(row[columnOffset]);
+              if (prop === "videoType") {
+                const rawVideoType = String(row[columnOffset] ?? "").trim();
+                row[columnOffset] = fbVideoType(rawVideoType) || rawVideoType;
+              }
+              if (prop === "seconds" && String(row[columnOffset] ?? "").trim())
+                row[columnOffset] = fbFrameSeconds(row[columnOffset]);
+            }
           const d = Math.max(0, Number(c?.[0]?.startRow) || 0),
             u = Math.max(0, 500 - d);
           if (l.length > u) {
@@ -32004,29 +32661,10 @@ ${V}`;
               "fb-auto-expand-paste",
             );
         }
-        function a(l, c) {
-          if (l !== 0 && l !== 1) return;
-          const h = c.querySelector(".colHeader") || c;
-          if (h.querySelector(".fb-load-button")) return;
-          h.innerHTML = "";
-          const d = document.createElement("button");
-          ((d.type = "button"),
-            (d.className = "fb-load-button"),
-            (d.textContent = l === 0 ? "加载素材/首帧图" : "加载尾帧图"),
-            d.addEventListener("mousedown", (u) => u.stopPropagation()),
-            d.addEventListener("click", (u) => {
-              (u.preventDefault(),
-                u.stopPropagation(),
-                o(l === 0 ? "image" : "endImage"));
-            }),
-            h.appendChild(d));
-          const u = document.createElement("div");
-          ((u.className = "fb-header-label"),
-            (u.textContent = l === 0 ? "素材图/首帧" : "尾帧图"),
-            h.appendChild(u));
-        }
+        const fbColumnWidths = fbGridColumnWidths();
         return Z.jsxs(Pk, {
             licenseKey: "non-commercial-and-evaluation",
+            className: "fb-grid-shell",
             ref: (l) => {
               l &&
                 !t.current &&
@@ -32045,31 +32683,46 @@ ${V}`;
               prompt: "",
               mode: "",
               seconds: "",
+              videoType: "",
               status: "",
               message: "",
               results: [],
               attempt: 0,
             },
             data: fbRows,
-            stretchH: "all",
+            stretchH: "none",
             width: "100%",
-            height:
-              "max(180px, calc(var(--fb-batch-viewport-height, 100vh) - 285px))",
-            minRows: 50,
+            height: "100%",
+            minRows: 30,
             maxRows: 500,
-            rowHeights: 58,
+            rowHeights: 63,
             autoRowSize: !1,
             autoColumnSize: !1,
-            modifyRowHeight: () => 58,
-            columnHeaderHeight: 62,
+            modifyRowHeight: () => 63,
+            columnHeaderHeight: 44,
             rowHeaders: !0,
-            manualColumnResize: !0,
+            rowHeaderWidth: 46,
+            afterGetColHeader: (l, c) => {
+              if (l >= 0) return;
+              const h = c.querySelector(".colHeader");
+              h && (h.textContent = "序号");
+            },
+            manualColumnResize: !1,
             manualRowResize: !1,
             viewportRowRenderingOffset: 20,
-            afterGetColHeader: a,
             afterChange: s,
             beforePaste: fbExpandRowsBeforePaste,
             beforeCopy: r,
+            cells: (l, c) => {
+              if (![2, 3].includes(c)) return {};
+              const h = e()?.getSourceDataAtRow(l) ?? fbRows?.[l] ?? {};
+              return fbIsTextVideoRow(
+                h,
+                fbGenerationType(fbGenerationTypeValue),
+              )
+                ? { readOnly: !0, className: "fb-text-video-disabled" }
+                : {};
+            },
             contextMenu: {
               items: {
                 row_above: { name: "在上方插入空行" },
@@ -32082,7 +32735,8 @@ ${V}`;
             Z.jsx(Li, {
               data: "image",
               title: "素材图/首帧",
-              width: 110,
+              width: fbColumnWidths[0],
+              className: "fb-image-column",
               editor: !1,
               renderer: XL,
               customType: "object",
@@ -32091,7 +32745,8 @@ ${V}`;
             Z.jsx(Li, {
               data: "endImage",
               title: "尾帧图",
-              width: 110,
+              width: fbColumnWidths[1],
+              className: "fb-image-column",
               editor: !1,
               renderer: XL,
               customType: "object",
@@ -32100,45 +32755,52 @@ ${V}`;
             Z.jsx(Li, {
               data: "imageName",
               title: "素材图/首帧-图片名",
-              width: 150,
-              renderer: fbTextRenderer,
+              width: fbColumnWidths[2],
+              renderer: fbImageNameRenderer,
             }),
             Z.jsx(Li, {
               data: "endImageName",
               title: "尾帧图片名",
-              width: 130,
-              renderer: fbTextRenderer,
+              width: fbColumnWidths[3],
+              renderer: fbImageNameRenderer,
             }),
             Z.jsx(Li, {
               data: "clipName",
               title: "分镜片段名称",
-              width: 310,
+              width: fbColumnWidths[4],
               renderer: fbTextRenderer,
             }),
             Z.jsx(Li, {
               data: "prompt",
               title: "分镜提示词",
-              width: 440,
+              width: fbColumnWidths[5],
               renderer: fbTextRenderer,
             }),
             Z.jsx(Li, {
               data: "mode",
               title: "素材/帧模式",
-              width: 90,
+              width: fbColumnWidths[6],
               editor: !1,
               renderer: fbModeRenderer,
             }),
             Z.jsx(Li, {
               data: "seconds",
-              title: "帧模式下秒数",
-              width: 110,
+              title: "秒数",
+              width: fbColumnWidths[7],
               editor: !1,
               renderer: fbSecondsRenderer,
             }),
             Z.jsx(Li, {
+              data: "videoType",
+              title: "生成方式",
+              width: fbColumnWidths[8],
+              editor: !1,
+              renderer: fbVideoTypeRenderer,
+            }),
+            Z.jsx(Li, {
               data: "status",
               title: "生成状态",
-              width: 125,
+              width: fbColumnWidths[9],
               editor: !1,
               readOnly: !0,
               renderer: fbStatusRenderer,
@@ -32146,7 +32808,7 @@ ${V}`;
             Z.jsx(Li, {
               data: "_retry",
               title: "手动重生",
-              width: 75,
+              width: fbColumnWidths[10],
               editor: !1,
               readOnly: !0,
               renderer: fbRetryRenderer,
@@ -32154,7 +32816,7 @@ ${V}`;
             Z.jsx(Li, {
               data: "_download",
               title: "手动下载",
-              width: 75,
+              width: fbColumnWidths[11],
               editor: !1,
               readOnly: !0,
               renderer: fbDownloadRenderer,
@@ -32162,21 +32824,29 @@ ${V}`;
             ],
         });
       }
-      function fbBatchViewportHeight() {
-        const t = [
-          window.visualViewport?.height,
-          window.innerHeight,
-          document.documentElement?.clientHeight,
-        ]
-          .map((e) => Number(e))
-          .find((e) => Number.isFinite(e) && e > 0);
-        return Math.max(240, Math.round(t || 720));
+      function fbBatchViewportRect() {
+        const t = window.visualViewport,
+          e = Number(t?.width) ||
+            Number(window.innerWidth) ||
+            Number(document.documentElement?.clientWidth) ||
+            1280,
+          n = Number(t?.height) ||
+            Number(window.innerHeight) ||
+            Number(document.documentElement?.clientHeight) ||
+            720;
+        return {
+          width: Math.max(320, Math.floor(e)),
+          height: Math.max(240, Math.floor(n)),
+          left: Math.max(0, Math.floor(Number(t?.offsetLeft) || 0)),
+          top: Math.max(0, Math.floor(Number(t?.offsetTop) || 0)),
+        };
       }
       function GseV2({ open: t, onCancel: e }) {
         const n = Q.useRef(),
           [o] = H9(),
           [i, s] = Q.useState(!1),
           [fbCheckpointBusy, setFbCheckpointBusy] = Q.useState(!1),
+          [fbMaterialOnly, setFbMaterialOnly] = Q.useState(!1),
           [, r] = Q.useState(0),
           a = Q.useRef(!1),
           l = Q.useRef(!1),
@@ -32185,6 +32855,9 @@ ${V}`;
           fbStopWaiters = Q.useRef(new Set()),
           fbKeepAwakeHeartbeat = Q.useRef(0),
           fbPageWakeLock = Q.useRef(null),
+          fbSubmitLock = Q.useRef(Promise.resolve()),
+          fbInfrastructureFailures = Q.useRef(0),
+          fbMaterialOnlyRef = Q.useRef(!1),
           fbGridData = Q.useRef([]);
         F9([
           { name: "onSubmitSuccess", callback: U },
@@ -32251,28 +32924,50 @@ ${V}`;
         }, []);
         Q.useEffect(() => {
           let N = 0,
-            $ = 0;
-          const ee = () => {
-            const ne = fbBatchViewportHeight();
-            document.documentElement.style.setProperty(
-              "--fb-batch-viewport-height",
-              `${ne}px`,
-            );
+            $ = 0,
+            ee = null;
+          const ne = () => {
             (window.cancelAnimationFrame(N),
               (N = window.requestAnimationFrame(() => {
-                (h()?.refreshDimensions(), h()?.render());
+                const oe = fbBatchViewportRect(),
+                  ie = document.documentElement;
+                (ie.style.setProperty("--fb-batch-viewport-width", `${oe.width}px`),
+                  ie.style.setProperty(
+                    "--fb-batch-viewport-height",
+                    `${oe.height}px`,
+                  ),
+                  ie.style.setProperty("--fb-visual-left", `${oe.left}px`),
+                  ie.style.setProperty("--fb-visual-top", `${oe.top}px`),
+                  r((oe) => oe + 1),
+                  h()?.refreshDimensions(),
+                  h()?.render());
               })));
-          };
+          },
+            oe = () => {
+              (ee?.disconnect(),
+                typeof ResizeObserver === "function" &&
+                  ((ee = new ResizeObserver(ne)),
+                  [
+                    document.querySelector(".fb-full-modal .ant-modal-body"),
+                    document.querySelector(".fb-full-modal .fb-settings"),
+                  ]
+                    .filter(Boolean)
+                    .forEach((t) => ee.observe(t))),
+                ne());
+            };
           return (
-            ee(),
-            ($ = window.setTimeout(ee, 160)),
-            window.addEventListener("resize", ee),
-            window.visualViewport?.addEventListener("resize", ee),
+            oe(),
+            ($ = window.setTimeout(oe, 160)),
+            window.addEventListener("resize", ne),
+            window.visualViewport?.addEventListener("resize", ne),
+            window.visualViewport?.addEventListener("scroll", ne),
             () => {
               (window.clearTimeout($),
                 window.cancelAnimationFrame(N),
-                window.removeEventListener("resize", ee),
-                window.visualViewport?.removeEventListener("resize", ee));
+                ee?.disconnect(),
+                window.removeEventListener("resize", ne),
+                window.visualViewport?.removeEventListener("resize", ne),
+                window.visualViewport?.removeEventListener("scroll", ne));
             }
           );
         }, [h, t]);
@@ -32293,51 +32988,29 @@ ${V}`;
         function u(N) {
           (h7(($) => ({ ...$, ...N })), d());
         }
-        function fbApplyBatchDefaultMode(N) {
-          if (a.current || l.current) {
-            Ve.message.warning("请先停止正在提交的任务，再切换默认模式");
-            return;
-          }
-          const $ = fbMode(N || "VIDEO_REFERENCES");
-          u({ defaultRowMode: $ });
-          const ee = f(),
-            ne = ee.map((oe) => {
-              if (!fbHasContent(oe) || fbIsCompleted(oe)) return oe;
-              const ie = $ === "VIDEO_FRAMES" ? fbFrameSeconds(oe.seconds) : "";
-              return {
-                ...oe,
-                mode: $,
-                seconds: ie,
-                status: "pending",
-                message: "",
-                results: [],
-                downloadedFiles: [],
-                generationIds: [],
-                successfulGenerationIds: [],
-                failedGenerationIds: [],
-                successfulOutputs: 0,
-                failedOutputs: 0,
-                outputFailureMessages: [],
-                generationId: "",
-                downloadFileBase: "",
-                downloadBindingKey: "",
-                completedAt: 0,
-                generatedAt: 0,
-                failedAt: 0,
-                retryScheduledAt: 0,
-              };
-            });
-          (fbReplaceGridData(ne),
-            g(ne),
-            setTimeout(() => h()?.render(), 0),
-            Ve.message.success(
-              $ === "VIDEO_FRAMES"
-                ? "已切换为帧模式；空白秒数默认8秒，逐行4/6/8秒仍可修改或粘贴"
-                : "已切换为素材模式",
-            ));
+        function fbRowsWithMaterialMode(N) {
+          const $ = Array.isArray(N) ? N : [],
+            generationType = fbGenerationType();
+          return fbMaterialOnlyRef.current
+            ? $.map((ee) =>
+                fbHasContent(ee)
+                  ? {
+                      ...ee,
+                      mode: "VIDEO_REFERENCES",
+                      seconds:
+                        fbIsTextVideoRow(ee, generationType) || fbIsOmniModel()
+                          ? fbRowSeconds(
+                              { ...ee, mode: "VIDEO_REFERENCES" },
+                              generationType,
+                            )
+                          : "",
+                    }
+                  : ee,
+              )
+            : $;
         }
         function fbReplaceGridData(N) {
-          const $ = fbNormalizeRows(N);
+          const $ = fbNormalizeRows(fbRowsWithMaterialMode(N));
           fbGridData.current = $;
           const ee = h();
           return (ee?.loadData($), ee?.render(), $);
@@ -32352,7 +33025,11 @@ ${V}`;
                 ne.id === ee[oe]?.id &&
                 ne.imageName === ee[oe]?.imageName &&
                 ne.clipName === ee[oe]?.clipName &&
-                ne.prompt === ee[oe]?.prompt,
+                ne.prompt === ee[oe]?.prompt &&
+                ne.mode === ee[oe]?.mode &&
+                String(ne.seconds ?? "") === String(ee[oe]?.seconds ?? "") &&
+                String(ne.videoType ?? "") ===
+                  String(ee[oe]?.videoType ?? ""),
             )
           );
         }
@@ -32372,13 +33049,19 @@ ${V}`;
           return !0;
         }
         function f(N = ab()) {
-          const $ = fbNormalizeRows(h()?.getSourceData() ?? []),
-            ee = fbNormalizeRows(fbGridData.current ?? []),
+          const $ = fbNormalizeRows(
+              fbRowsWithMaterialMode(h()?.getSourceData() ?? []),
+            ),
+            ee = fbNormalizeRows(
+              fbRowsWithMaterialMode(fbGridData.current ?? []),
+            ),
             ne = $.some(fbShouldStoreRow) || !ee.some(fbShouldStoreRow) ? $ : ee;
-          return fbNormalizeRows(ne.some(fbShouldStoreRow) ? ne : bv(N) ?? ne);
+          return fbNormalizeRows(
+            fbRowsWithMaterialMode(ne.some(fbShouldStoreRow) ? ne : bv(N) ?? ne),
+          );
         }
         function g(N, $ = ab()) {
-          const normalizedRows = fbNormalizeRows(N),
+          const normalizedRows = fbNormalizeRows(fbRowsWithMaterialMode(N)),
             ee = fbRowsForStorage(normalizedRows);
           fbGridData.current = normalizedRows;
           (ee.length && fbSetPageExplicitlyCleared($, !1),
@@ -32425,15 +33108,24 @@ ${V}`;
           });
         }
         async function fbResolveRowReadyImages(N, $) {
+          if (fbIsTextVideoRow(N))
+            return { row: { ...N, image: null, endImage: null }, error: "" };
           const ee = await fbWaitForImages(),
             ne = { ...N },
             oe = [];
-          if ($ === "VIDEO_REFERENCES")
+          if ($ === "VIDEO_REFERENCES") {
             oe.push({
               field: "image",
               nameField: "imageName",
               label: "素材图",
             });
+            (N.endImage || String(N.endImageName || "").trim()) &&
+              oe.push({
+                field: "endImage",
+                nameField: "endImageName",
+                label: "第二张素材图",
+              });
+          }
           else {
             (N.image || String(N.imageName || "").trim()) &&
               oe.push({
@@ -32473,54 +33165,102 @@ ${V}`;
           }
           return { row: ne, error: "" };
         }
-        function fbPauseForImageIssue(N, $, ee) {
+        function fbPauseForImageIssue(N, $, ee, ne = !1) {
           try {
             promptBoxStore?.getState?.()?.actions?.clearPromptBox?.();
           } catch {}
-          const ne = `${ee}；已清空 Flow 提示框并暂停后续提交，请等待图片完整显示后重新点击“加载素材/首帧图”，再继续`;
+          ne
+            ? (fbInfrastructureFailures.current += 1)
+            : (fbInfrastructureFailures.current = 0);
+          const oe = ne && fbInfrastructureFailures.current >= 3,
+            ie = oe
+              ? `${ee}；已连续 ${fbInfrastructureFailures.current} 次无法将图片挂载到 Flow，已暂停新增提交，请检查页面状态后继续`
+              : `${ee}；已跳过本行，其他有效分镜会继续运行`;
           (m(
             N.id,
             {
               status: "missing_image",
-              message: ne,
+              message: ie,
               image: N.image || null,
               endImage: N.endImage || null,
+            },
+            $,
+          ));
+          if (oe)
+            ((a.current = !1),
+              fbReleaseInternalWaits(),
+              s(!1),
+              (window.currentProcess = null));
+          (Ve.message.warning(ie));
+          return !1;
+        }
+        function fbStopForConfigurationIssue(N, $, ee) {
+          try {
+            promptBoxStore?.getState?.()?.actions?.clearPromptBox?.();
+          } catch {}
+          const ne = `提交前配置失败：${ee || "Flow 页面方法未准备完成"}；本次没有调用 Flow 生成，也没有消耗目标轮次。请刷新 Flow 页面后再点“开始 / 继续未完成”`;
+          (m(
+            N.id,
+            {
+              status: "configuration_failed",
+              message: ne,
+              planPhase: "",
+              planRound: 0,
+              failedAt: Date.now(),
             },
             $,
           ),
             (a.current = !1),
             fbReleaseInternalWaits(),
             s(!1),
+            fbSetKeepAwake(!1),
             (window.currentProcess = null),
-            Ve.message.warning(ne));
+            Ve.message.error(ne));
           return !1;
         }
         function P(N) {
-          const $ = fbEffectiveMode(N.mode),
+          const generationType = fbGenerationType(),
+            $ = fbEffectiveRowMode(N, generationType),
+            textVideo = fbIsTextVideoRow(N, generationType),
+            allowedSeconds = fbAllowedSeconds(),
+            usesDuration = fbUsesSelectableDuration(
+              { ...N, mode: $ },
+              generationType,
+            ),
             ee = !!N.image?.primaryMediaKey,
             ne = !!N.endImage?.primaryMediaKey;
-          if ($ === "VIDEO_REFERENCES" && !ee)
+          const rawVideoType = String(N.videoType ?? "").trim();
+          if (!fbVideoType(rawVideoType))
+            return rawVideoType
+              ? `生成方式“${rawVideoType}”无法识别，请填写“图生视频”或“文生视频”`
+              : "请选择生成方式：图生视频或文生视频";
+          if (textVideo && $ !== "VIDEO_REFERENCES")
+            return "文生视频仅支持素材模式";
+          if (!textVideo && $ === "VIDEO_REFERENCES" && !ee)
             return "素材模式请先按图片名加载素材图";
-          if ($ === "VIDEO_FRAMES" && !ee && !ne)
+          if (!textVideo && $ === "VIDEO_FRAMES" && !ee && !ne)
             return "帧模式至少需要加载首帧图或尾帧图";
-          if (N.imageName && !ee)
+          if (!textVideo && N.imageName && !ee)
             return "已填写素材图/首帧图片名，但尚未加载到图片";
           if (!String(N.clipName || "").trim()) return "缺少分镜片段名称";
           if (!String(N.prompt || "").trim()) return "缺少分镜提示词";
           if (!["VIDEO_REFERENCES", "VIDEO_FRAMES"].includes($))
             return "素材/帧模式只能填写“素材”或“帧”";
           if (
-            $ === "VIDEO_FRAMES" &&
+            usesDuration &&
             String(N.seconds || "").trim() &&
-            ![4, 6, 8].includes(Number(N.seconds))
+            !allowedSeconds.includes(Number(N.seconds))
           )
-            return "帧模式下秒数只能填写 4、6 或 8";
-          if (N.endImageName && !N.endImage?.primaryMediaKey)
+            return `当前模型秒数只能填写 ${allowedSeconds.join("、")}`;
+          if (textVideo && !fbParsedFrameSeconds(N.seconds))
+            return `文生视频请选择 ${allowedSeconds.join("、")} 秒`;
+          if (!textVideo && N.endImageName && !N.endImage?.primaryMediaKey)
             return "已填写尾帧图片名，但尚未加载到尾帧图";
           return "";
         }
         function fbRequiredPromptImages(N, $) {
           const ee = [];
+          if (fbIsTextVideoRow(N)) return ee;
           if (N.image?.primaryMediaKey)
             ee.push({
               imageId: N.image.primaryMediaKey,
@@ -32528,12 +33268,12 @@ ${V}`;
                 $ === "VIDEO_FRAMES" ? "FIRST_FRAME" : "REFERENCE",
               label: $ === "VIDEO_FRAMES" ? "首帧图" : "素材图",
             });
-          $ === "VIDEO_FRAMES" &&
-            N.endImage?.primaryMediaKey &&
+          N.endImage?.primaryMediaKey &&
             ee.push({
               imageId: N.endImage.primaryMediaKey,
-              preferredIngredientType: "LAST_FRAME",
-              label: "尾帧图",
+              preferredIngredientType:
+                $ === "VIDEO_FRAMES" ? "LAST_FRAME" : "REFERENCE",
+              label: $ === "VIDEO_FRAMES" ? "尾帧图" : "第二张素材图",
             });
           return ee;
         }
@@ -32560,48 +33300,172 @@ ${V}`;
           }
           return !1;
         }
+        function fbApplyFlowVideoSettings(N, $, ee, ne, oe) {
+          const ie = promptBoxStore.getState?.()?.actions,
+            re = {};
+          ie?.setMode ? ie.setMode($) : (re.mode = $);
+          ie?.setAspectRatio
+            ? ie.setAspectRatio(N)
+            : (re.aspectRatio = N);
+          ie?.setOutputsPerPrompt
+            ? ie.setOutputsPerPrompt(ee)
+            : (re.outputsPerPrompt = ee);
+          ie?.setVideoModelFamily
+            ? ie.setVideoModelFamily(ne)
+            : (re.videoModelFamilyId = ne);
+          ie?.setSelectedVideoDuration
+            ? ie.setSelectedVideoDuration(oe)
+            : (re.selectedVideoDuration = oe);
+          ie?.setVideoResolution
+            ? ie.setVideoResolution("VIDEO_RESOLUTION_720P")
+            : (re.videoResolution = "VIDEO_RESOLUTION_720P");
+          Object.keys(re).length && promptBoxStore.setState(re);
+        }
+        async function fbWaitForVideoModelReady(N, $, ee = 5500) {
+          const ne = fbCreateSuspendAwareTimer(ee, 1e3);
+          let oe = 0;
+          for (; !ne.expired() && a.current; ) {
+            const ee = promptBoxStore.getState?.(),
+              ne = String(ee?.videoModelFamilyId || "") === String(N),
+              ie = Number(ee?.selectedVideoDuration) === Number($),
+              re =
+                String(ee?.videoResolution || "VIDEO_RESOLUTION_720P") ===
+                "VIDEO_RESOLUTION_720P",
+              ae = fbVideoModelKeyIsReady(ee);
+            if (fbDurationIsDisabled(ee, $))
+              throw Error(
+                `Flow 当前账号暂不可使用${fbIsOmniModel() ? " Omni 1.1 Flash" : "当前视频模型"}的 ${$} 秒，请在原生面板确认该秒数是否可选`,
+              );
+            if (ne && ie && re && ae) {
+              if (++oe >= 2) return !0;
+            } else oe = 0;
+            await Zc(0.2);
+          }
+          return !1;
+        }
         async function fbPrepareFlowPrompt(N, $, ee) {
-          const ne = fbRequiredPromptImages(N, $);
-          if (!ne.length) return !1;
+          const generationType = fbGenerationType(),
+            textVideo = fbIsTextVideoRow(N, generationType),
+            ne = fbRequiredPromptImages(N, $),
+            configuredModel =
+              zd().videoModel ?? "veo_3_1_lite_low_priority",
+            requestedSeconds = fbUsesSelectableDuration(
+              { ...N, mode: $ },
+              generationType,
+            )
+              ? fbFrameSeconds(N.seconds)
+              : 8,
+            aspectRatio = zd().aspectRatio || "PORTRAIT";
+          if (!ne.length && !textVideo) return !1;
+          let lastModelReady = !1,
+            lastImagesReady = textVideo,
+            lastModelMappingFound = !fbIsOmniModel(configuredModel);
           for (let oe = 1; oe <= 3 && a.current; oe++) {
             const ie = promptBoxStore.getState()?.actions;
-            if (!ie?.clearPromptBox || !ie?.setPrompt || !ie?.addImageIngredient)
+            if (
+              !ie?.clearPromptBox ||
+              !ie?.setPrompt ||
+              (!textVideo && !ie?.addImageIngredient)
+            )
               throw Error("Flow 提示框方法不完整，请刷新页面后重试");
             (ie.clearPromptBox(), await Zc(oe === 1 ? 1.1 : 1.6));
-            const re = {
-              mode: $,
-              aspectRatio: zd().aspectRatio || "PORTRAIT",
-              outputsPerPrompt: ee,
-              videoModelFamilyId:
-                zd().videoModel ?? "veo_3_1_lite_low_priority",
-              selectedVideoDuration:
-                $ === "VIDEO_FRAMES" ? fbFrameSeconds(N.seconds) : 8,
-            };
-            (promptBoxStore.setState(re), await Zc(0.35));
+            (fbApplyFlowVideoSettings(
+              aspectRatio,
+              $,
+              ee,
+              configuredModel,
+              requestedSeconds,
+            ),
+              await Zc(0.25));
+            let resolvedModel = configuredModel;
+            let pickerOption = null;
+            for (let re = 0; re < 20 && a.current; re++) {
+              const ae = promptBoxStore.getState?.(),
+                le = fbResolveVideoModelFamilyId(
+                  ae,
+                  configuredModel,
+                  requestedSeconds,
+                );
+              pickerOption = fbVideoPickerOptionForModel(ae, configuredModel);
+              if (pickerOption || le !== configuredModel) {
+                resolvedModel = le;
+                break;
+              }
+              await Zc(0.15);
+            }
+            if (fbIsOmniModel(configuredModel)) {
+              const re =
+                pickerOption?.durationToFamilyId?.[requestedSeconds] ??
+                pickerOption?.durationToFamilyId?.[String(requestedSeconds)];
+              if (!re) {
+                const ae = promptBoxStore.getState?.(),
+                  le = String(ae?.videoModelFamilyId || "").trim(),
+                  se = Number(ae?.selectedVideoDuration) === requestedSeconds;
+                if (le && se) {
+                  (console.info(
+                    "Flow 未提供 Omni 按秒数映射，使用原生面板已确认的模型与秒数",
+                    { attempt: oe, requestedSeconds, resolvedModel: le },
+                  ),
+                    (resolvedModel = le),
+                    (lastModelMappingFound = !0));
+                } else {
+                  (console.warn("未读取到 Omni 1.1 Flash 的按秒数模型映射", {
+                    attempt: oe,
+                    requestedSeconds,
+                    pickerOptions:
+                      promptBoxStore.getState?.()?.videoModelPickerOptions,
+                  }),
+                    (lastModelMappingFound = !1));
+                  continue;
+                }
+              } else {
+                ((resolvedModel = String(re)), (lastModelMappingFound = !0));
+              }
+            }
+            (fbApplyFlowVideoSettings(
+              aspectRatio,
+              $,
+              ee,
+              resolvedModel,
+              requestedSeconds,
+            ),
+              await Zc(0.35));
             const ae = promptBoxStore.getState()?.actions;
-            if (!ae?.setPrompt || !ae?.addImageIngredient)
+            if (!ae?.setPrompt || (!textVideo && !ae?.addImageIngredient))
               throw Error("Flow 提示框在准备过程中发生变化，请刷新页面后重试");
             (ae.setPrompt(N.prompt), await Zc(0.35));
-            const le = new Map(
-              ne.map((se) => [
-                fbCanonicalMediaKey(se.imageId),
-                fbPromptStateMediaKeyPaths(
-                  promptBoxStore.getState?.(),
-                  se.imageId,
-                ),
-              ]),
-            );
-            for (const se of ne) {
-              (promptBoxStore.getState().actions.addImageIngredient({
-                imageId: se.imageId,
-                preferredIngredientType: se.preferredIngredientType,
-                source: "PLUS_BUTTON",
-              }),
-                await Zc(0.4));
+            if (!textVideo) {
+              const le = new Map(
+                ne.map((se) => [
+                  fbCanonicalMediaKey(se.imageId),
+                  fbPromptStateMediaKeyPaths(
+                    promptBoxStore.getState?.(),
+                    se.imageId,
+                  ),
+                ]),
+              );
+              for (const se of ne) {
+                (promptBoxStore.getState().actions.addImageIngredient({
+                  imageId: se.imageId,
+                  preferredIngredientType: se.preferredIngredientType,
+                  source: "PLUS_BUTTON",
+                }),
+                  await Zc(0.4));
+              }
+              lastImagesReady = await fbWaitForPromptImages(ne, 4500, le);
             }
-            if (await fbWaitForPromptImages(ne, 4500, le)) return !0;
-            console.warn("Flow 图片挂载校验失败，正在重建提示框", {
+            lastModelReady = await fbWaitForVideoModelReady(
+              resolvedModel,
+              requestedSeconds,
+            );
+            if (lastImagesReady && lastModelReady) return !0;
+            console.warn("Flow 提示框校验失败，正在重建提示框", {
               attempt: oe,
+              configuredModel,
+              resolvedModel,
+              requestedSeconds,
+              modelReady: lastModelReady,
+              imagesReady: lastImagesReady,
               expectedImages: ne.map((le) => ({
                 label: le.label,
                 imageId: le.imageId,
@@ -32614,31 +33478,37 @@ ${V}`;
             (promptBoxStore.getState()?.actions?.clearPromptBox?.(),
               await Zc(0.3));
           } catch {}
+          if (!lastModelMappingFound)
+            throw Error(
+              `未能读取 Flow 当前 Omni 1.1 Flash 的 ${requestedSeconds} 秒模型编号，已阻止错误提交；请刷新 Flow 后重试`,
+            );
+          if (!lastModelReady)
+            throw Error(
+              `${fbIsOmniModel(configuredModel) ? "Omni 1.1 Flash" : "当前视频模型"}的 ${requestedSeconds} 秒模型未准备完成，已阻止使用错误模型提交；请刷新 Flow 后重试`,
+            );
           return !1;
         }
         async function O(N, $) {
           if (!promptBoxStore || !window.generateVideo)
-            return (
-              m(
-                N.id,
-                {
-                  status: "failed",
-                  message: "未检测到 Flow 生成方法，请刷新页面后重试",
-                },
-                $,
-              ),
-              !1
+            return fbStopForConfigurationIssue(
+              N,
+              $,
+              "未检测到 Flow 生成方法",
             );
+          const generationType = fbGenerationType(),
+            textVideo = fbIsTextVideoRow(N, generationType),
+            oe = fbEffectiveRowMode(N, generationType);
           m(
             N.id,
             {
               status: "submitting",
-              message: "正在检查图片是否已经完整上传并可用于生成",
+              message: textVideo
+                ? "正在准备文生视频提示词"
+                : "正在检查图片是否已经完整上传并可用于生成",
             },
             $,
           );
-          const oe = fbEffectiveMode(N.mode),
-            imageReadiness = await fbResolveRowReadyImages(N, oe);
+          const imageReadiness = await fbResolveRowReadyImages(N, oe);
           if (!a.current) return !1;
           if (imageReadiness.error)
             return fbPauseForImageIssue(
@@ -32664,10 +33534,26 @@ ${V}`;
               !1
             );
           const ne = (Number(N.attempt) || 0) + 1,
-            ie = ZA(N.manualRetryFileBase || N.clipName) || `分镜-${$ + 1}`,
+            planProgress = fbGenerationPlanProgress(N, zd()),
+            planPhase = String(N.planPhase || ""),
+            planRound = Math.max(1, Number(N.planRound) || 1),
+            baseFileName =
+              ZA(N.manualRetryFileBase || N.clipName) || `分镜-${$ + 1}`,
+            planSuffix =
+              fbHasGenerationPlan(N) &&
+              !N.manualRetryFileBase &&
+              (planProgress.rounds > 1 || planPhase === "repair")
+                ? planPhase === "repair"
+                  ? `-补跑${planRound}`
+                  : `-第${planRound}轮`
+                : "",
+            ie = `${baseFileName}${planSuffix}`,
             expectedOutputs = Math.min(
               4,
-              Math.max(1, Number(zd().outputsPerPrompt) || 1),
+              Math.max(
+                1,
+                Number(N.planBatchOutputs || zd().outputsPerPrompt) || 1,
+              ),
             ),
             bindingKey = `${N.id}:${ne}:${ie}`,
             re = {
@@ -32690,7 +33576,7 @@ ${V}`;
             N.id,
             {
               mode: oe,
-              seconds: oe === "VIDEO_FRAMES" ? fbFrameSeconds(N.seconds) : "",
+              seconds: fbRowSeconds(N, generationType),
               status: "submitting",
               message: "",
               attempt: ne,
@@ -32723,27 +33609,31 @@ ${V}`;
                 N,
                 $,
                 "图片虽然可以预览，但未能真正挂载到 Flow 提示框；已拦截纯提示词提交",
+                !0,
               );
             }
             const le = fbRequiredPromptImages(N, oe);
             if (
-              !le.length ||
-              !le.every((se) =>
+              !textVideo &&
+              (!le.length ||
+                !le.every((se) =>
                 fbPromptStateHasMediaKey(
                   promptBoxStore.getState?.(),
                   se.imageId,
                 ),
-              )
+                ))
             )
               return fbPauseForImageIssue(
                 N,
                 $,
                 "提交前最终图片校验失败，已阻止无图片生成",
+                !0,
               );
+            fbInfrastructureFailures.current = 0;
             window.currentProcess = re;
             const se = `${re.rowId}:${re.attempt}`;
             return await new Promise((ae) => {
-              const timeoutBudget = fbCreateSuspendAwareTimer(45e3, 5e3);
+              const timeoutBudget = fbCreateSuspendAwareTimer(90e3, 5e3);
               let le;
               const checkTimeout = () => {
                 if (!timeoutBudget.expired()) {
@@ -32761,7 +33651,13 @@ ${V}`;
                 window.generateVideo());
             });
           } catch (ae) {
-            return (a.current && H(re, ae?.message || String(ae)), !1);
+            return a.current
+              ? fbStopForConfigurationIssue(
+                  N,
+                  $,
+                  ae?.message || String(ae),
+                )
+              : !1;
           }
         }
         function fbLooksRateLimited(N = "") {
@@ -32788,10 +33684,25 @@ ${V}`;
             [...c.current.values()].forEach((N) => N(!1)),
             c.current.clear());
         }
+        async function fbWithSubmitLock(N) {
+          let $;
+          const ee = fbSubmitLock.current,
+            ne = new Promise((oe) => {
+              $ = oe;
+            });
+          fbSubmitLock.current = ne;
+          try {
+            (await ee.catch(() => {}));
+            if (!a.current) return !1;
+            return await N();
+          } finally {
+            $?.();
+          }
+        }
         async function fbGentleWait(N) {
           return await fbCancelableWait(N);
         }
-        const FB_GENERATION_HARD_LIMIT_MS = 3 * 60 * 1e3;
+        const FB_GENERATION_HARD_LIMIT_MS = 15 * 60 * 1e3;
         function fbRowPastHardGenerationDeadline(N, $) {
           const ee = Number($?.submittedAt || N?.submittedAt || N?.generatedAt) || 0;
           return !!ee && Date.now() - ee >= FB_GENERATION_HARD_LIMIT_MS;
@@ -32851,16 +33762,15 @@ ${V}`;
             });
           }
         }
-        async function fbWaitForCapacity(N) {
-          const $ = Math.min(4, Math.max(1, Number(N) || 1)),
+        async function fbWaitForCapacity() {
+          const $ = fbMaxInFlight(),
             ee = fbCreateSuspendAwareTimer(45 * 60 * 1e3, 30e3);
+          let readyNoticeShown = !1;
           for (; a.current; ) {
             const activeRows = f().filter(
               (oe) =>
                 fbHasContent(oe) &&
-                ["submitting", "generating", "downloading"].includes(
-                  oe.status,
-                ),
+                fbUsesCapacity(oe.status),
               ),
               hardStalledRows = activeRows.filter(
                 (oe) =>
@@ -32870,12 +33780,21 @@ ${V}`;
             if (hardStalledRows.length) {
               await fbFinalizeStalledGenerationRows(
                 hardStalledRows,
-                "超过三分钟的任务",
+                "超过十五分钟安全等待时间的任务",
               );
               continue;
             }
             const ne = activeRows.length;
             if (ne < $) return !0;
+            const readyCount = activeRows.filter(
+              (oe) => oe.status === "ready",
+            ).length;
+            if (readyCount && !readyNoticeShown) {
+              (Ve.message.warning(
+                `${readyCount} 条已生成视频正在等待手动下载，并占用并发名额；下载后会自动继续提交`,
+              ),
+                (readyNoticeShown = !0));
+            }
             if (ee.expired()) {
               Ve.message.warning(
                 `已有 ${ne} 条任务长时间处理中，已暂停继续提交，避免累积更多在途任务`,
@@ -32899,11 +33818,7 @@ ${V}`;
             ne = fbCreateSuspendAwareTimer(45 * 60 * 1e3, 30e3);
           for (; a.current; ) {
             const oe = f().filter((ie) => ee.has(ie.id)),
-              ie = oe.filter((re) =>
-                ["submitting", "generating", "downloading"].includes(
-                  re.status,
-                ),
-              ),
+              ie = oe.filter((re) => fbUsesCapacity(re.status)),
               hardStalledRows = ie.filter(
                 (re) =>
                   ["submitting", "generating"].includes(re.status) &&
@@ -32912,7 +33827,7 @@ ${V}`;
             if (hardStalledRows.length) {
               await fbFinalizeStalledGenerationRows(
                 hardStalledRows,
-                `第${$}轮超过三分钟的任务`,
+                `第${$}轮超过十五分钟安全等待时间的任务`,
               );
               continue;
             }
@@ -32928,24 +33843,12 @@ ${V}`;
           }
           return [];
         }
-        async function R() {
-          if (!a.current || l.current) return;
-          l.current = !0;
-          try {
-            const N = f();
-            g(N);
-            const {
-                interval: $,
-                intervalRandom: ee,
-                maxInFlight: ne,
-                autoRetry: oe,
-                retryRounds: ie,
-                retryRoundWait: re,
-              } = zd(),
-              ae = Math.min(3, Math.max(0, Number(ie) || 0));
-            let le = N.map((se, ce) => ({ row: se, index: ce })).filter(
-              ({ row: se }) =>
-                fbHasContent(se) &&
+        function fbQueueEntries(N, $, ee = !1) {
+          return (Array.isArray(N) ? N : [])
+            .map((ne, oe) => ({ row: ne, index: oe }))
+            .filter(
+              ({ row: ne }) =>
+                fbHasContent(ne) &&
                 ![
                   "success",
                   "partial_success",
@@ -32956,87 +33859,366 @@ ${V}`;
                   "downloading",
                   "validation_failed",
                   "missing_image",
-                ].includes(se.status) &&
-                (se.status !== "failed" || oe),
+                ].includes(ne.status) &&
+                (ne.status !== "failed" || $) &&
+                (!ee || !P(ne)),
             );
-            for (let se = 0; se <= ae && le.length && a.current; se++) {
-              const ce = se + 1,
-                de = [];
-              Ve.message.info(
-                se === 0
-                  ? `开始第一轮，共 ${le.length} 条；失败项先跳过，整轮结束后再检查`
-                  : `开始第${ce}轮，只补跑上一轮失败的 ${le.length} 条`,
+        }
+        function fbEnsureGenerationPlans() {
+          const N = f(),
+            $ = zd();
+          let ee = !1;
+          for (let ne = 0; ne < N.length; ne++) {
+            const oe = N[ne];
+            if (
+              !fbHasContent(oe) ||
+              fbHasGenerationPlan(oe) ||
+              (fbIsCompleted(oe) && !fbHasGenerationPlan(oe))
+            )
+              continue;
+            const ie = [
+              "missing_image",
+              "validation_failed",
+              "download_failed",
+            ].includes(oe.status)
+              ? oe.status
+              : "pending";
+            ((N[ne] = fbNormalizeRow(
+              {
+                ...oe,
+                ...fbNewGenerationPlan($),
+                status: ie,
+                message:
+                  ie === "pending"
+                    ? `等待按每行 ${fbGenerationRounds($.generationRounds)} 轮生成`
+                    : oe.message,
+              },
+              ne,
+            )),
+              (ee = !0));
+          }
+          return (ee && (fbReplaceGridData(N), g(N)), f());
+        }
+        function fbPlanCandidates(N, $ = 0) {
+          return fbEnsureGenerationPlans()
+            .map((ee, ne) => ({
+              row: ee,
+              index: ne,
+              progress: fbGenerationPlanProgress(ee, zd()),
+            }))
+            .filter(({ row: ee, progress: ne }) => {
+              if (
+                !fbHasContent(ee) ||
+                !fbHasGenerationPlan(ee) ||
+                P(ee) ||
+                [
+                  "submitting",
+                  "generating",
+                  "downloading",
+                  "ready",
+                  "download_failed",
+                ].includes(ee.status)
+              )
+                return !1;
+              return N === "base"
+                ? !ne.baseFinished
+                : ne.baseFinished && ne.missing > 0 && ne.repairDone < $;
+            })
+            .sort((ee, ne) =>
+              N === "base"
+                ? ee.progress.baseDone - ne.progress.baseDone ||
+                  ee.index - ne.index
+                : ee.progress.repairDone - ne.progress.repairDone ||
+                  ee.index - ne.index,
+            );
+        }
+        function fbRecordPlannedAttempt(N, $, ee, ne, oe, ie) {
+          const re = C(N, $);
+          if (!re) return null;
+          const ae = re.row,
+            le = fbGenerationPlanProgress(ae, zd()),
+            se = Math.min(
+              4,
+              Math.max(1, Number(ae.expectedOutputs || ae.planBatchOutputs) || 1),
+            ),
+            ce = Math.min(
+              se,
+              Math.max(
+                Number(ae.successfulOutputs) || 0,
+                Array.isArray(ae.results) ? ae.results.length : 0,
+              ),
+            ),
+            de = Math.min(
+              se,
+              Math.max(Number(ae.failedOutputs) || 0, se - ce),
+            ),
+            fe = le.success + ce,
+            he = le.failed + de,
+            pe = ee === "base" ? Math.max(le.baseDone, ne) : le.baseDone,
+            me = ee === "repair" ? Math.max(le.repairDone, ne) : le.repairDone,
+            ge = Math.max(0, le.target - fe),
+            Ce = pe >= le.rounds,
+            Ae = Ce && ge === 0,
+            Oe = Ce && !Ae && (!oe || me >= ie),
+            allResults = [
+              ...new Map(
+                [
+                  ...(Array.isArray(ae.allResults) ? ae.allResults : []),
+                  ...(Array.isArray(ae.results) ? ae.results : []),
+                ]
+                  .filter((We) => We?.url)
+                  .map((We) => [We.url, We]),
+              ).values(),
+            ],
+            allDownloadedFiles = [
+              ...new Set([
+                ...(Array.isArray(ae.allDownloadedFiles)
+                  ? ae.allDownloadedFiles
+                  : []),
+                ...(Array.isArray(ae.downloadedFiles)
+                  ? ae.downloadedFiles
+                  : []),
+              ]),
+            ],
+            phaseText = ee === "repair" ? `补跑第${ne}轮` : `第${ne}轮`,
+            summary = `${phaseText}完成：本轮成功${ce}个、失败${de}个；轮次${pe}/${le.rounds}；成功品${fe}/${le.target}个${ge ? `；待补${ge}个` : ""}`,
+            detail = de && ae.message ? `；${ae.message}` : "",
+            finalStatus = Ae
+              ? "success"
+              : Oe
+                ? fe
+                  ? "partial_success"
+                  : "failed"
+                : Ce
+                  ? "pending"
+                  : "pending";
+          return m(
+            N,
+            {
+              status: finalStatus,
+              message: `${summary}${detail}`,
+              baseRoundsCompleted: pe,
+              repairRoundsCompleted: me,
+              totalSuccessfulOutputs: fe,
+              totalFailedOutputs: he,
+              targetSuccessfulOutputs: le.target,
+              allResults,
+              allDownloadedFiles,
+              planPhase: "",
+              planRound: 0,
+              planBatchOutputs: le.outputsPerRound,
+              planComplete: Ae || Oe,
+              planTargetMet: Ae,
+              planCompletedAt: Ae || Oe ? Date.now() : 0,
+              completedAt: Ae || Oe ? Date.now() : 0,
+              retryScheduledAt: 0,
+            },
+            $,
+          );
+        }
+        async function fbRunPlannedAttempt(N, $, ee, ne) {
+          let oe,
+            re = 1;
+          const submitted = await fbWithSubmitLock(async () => {
+            if (!(await fbWaitForCapacity())) return !1;
+            oe = C(N.row.id, N.index);
+            if (!oe || !a.current) return !1;
+            const ie = fbGenerationPlanProgress(oe.row, zd()),
+              round = ee === "base" ? ie.baseDone + 1 : ie.repairDone + 1,
+              ae =
+                ee === "repair"
+                  ? Math.max(1, Math.min(ie.outputsPerRound, ie.missing))
+                  : ie.outputsPerRound,
+              le = ee === "repair" ? "补跑" : "生成";
+            re = round;
+            m(
+              oe.row.id,
+              {
+                status: "pending",
+                message: `${le}第${re}轮准备提交；当前成功品${ie.success}/${ie.target}个`,
+                planPhase: ee,
+                planRound: re,
+                planBatchOutputs: ae,
+                planComplete: !1,
+                planTargetMet: !1,
+              },
+              oe.index,
+            );
+            const se = C(oe.row.id, oe.index);
+            if (!se || !(await O(se.row, se.index))) return !1;
+            const submitSettings = zd(),
+              submitGap = fbSignedRandomSeconds(
+                Math.max(1, Number(submitSettings.interval) || 1),
+                submitSettings.intervalRandom,
+                1,
               );
-              for (const { row: fe, index: he } of le) {
-                if (!a.current) break;
-                if (!(await fbWaitForCapacity(ne))) {
-                  a.current = !1;
-                  break;
-                }
-                const pe = C(fe.id, he)?.row || fe;
-                if (!fbHasContent(pe)) continue;
-                de.push(pe.id);
-                await O(pe, he);
-                if (!a.current) break;
-                const me = fbSignedRandomSeconds(
-                  se === 0
-                    ? Math.max(1, Number($) || 30)
-                    : Math.max(60, Number($) || 30),
+            return await fbGentleWait(submitGap);
+          });
+          if (!submitted || !oe || !a.current) {
+            if (!submitted && oe && a.current) {
+              const failedRow = C(oe.row.id, oe.index)?.row;
+              failedRow?.status === "failed" &&
+                fbRecordPlannedAttempt(
+                  oe.row.id,
+                  oe.index,
                   ee,
-                  se === 0 ? 1 : 60,
+                  re,
+                  $,
+                  ne,
                 );
-                await fbGentleWait(me);
+            }
+            return !1;
+          }
+          const ce = C(oe.row.id, oe.index)?.row;
+          if (
+            !ce ||
+            ["validation_failed", "missing_image", "download_failed"].includes(
+              ce.status,
+            )
+          )
+            return !1;
+          await fbWaitForRound([oe.row.id], re);
+          if (!a.current) return !1;
+          fbRecordPlannedAttempt(oe.row.id, oe.index, ee, re, $, ne);
+          return a.current;
+        }
+        async function fbRunPlannedAttemptSafely(N, $, ee, ne) {
+          try {
+            return await fbRunPlannedAttempt(N, $, ee, ne);
+          } catch (oe) {
+            const ie = C(N?.row?.id, N?.index),
+              message = oe?.message || String(oe);
+            console.error("[Flow批量生成] 单行调度异常", oe);
+            if (ie && !fbIsCompleted(ie.row) && !fbIsActiveStatus(ie.row.status)) {
+              const progress = fbGenerationPlanProgress(ie.row, zd()),
+                round =
+                  Number(ie.row.planRound) ||
+                  (ee === "base"
+                    ? progress.baseDone + 1
+                    : progress.repairDone + 1);
+              (m(
+                ie.row.id,
+                {
+                  status: "failed",
+                  message: `本行调度异常，已隔离并继续其他分镜：${message}`,
+                  failedAt: Date.now(),
+                },
+                ie.index,
+              ),
+                fbRecordPlannedAttempt(
+                  ie.row.id,
+                  ie.index,
+                  ee,
+                  round,
+                  $,
+                  ne,
+                ));
+            }
+            Ve.message.error(`有一条分镜发生调度异常，其他分镜继续：${message}`);
+            return !1;
+          }
+        }
+        function fbFinalizeGenerationShortfalls(N, $) {
+          const ee = f();
+          for (let ne = 0; ne < ee.length; ne++) {
+            const oe = ee[ne];
+            if (!fbHasGenerationPlan(oe)) continue;
+            const ie = fbGenerationPlanProgress(oe, zd());
+            if (
+              !ie.baseFinished ||
+              !ie.missing ||
+              oe.planComplete ||
+              (N && ie.repairDone < $)
+            )
+              continue;
+            ee[ne] = {
+              ...oe,
+              status: ie.success ? "partial_success" : "failed",
+              message: `设定轮次${ie.baseDone}/${ie.rounds}已完成；目标成功品${ie.target}个，实际成功${ie.success}个，仍缺${ie.missing}个；失败补跑已结束`,
+              planPhase: "",
+              planRound: 0,
+              planComplete: !0,
+              planTargetMet: !1,
+              planCompletedAt: Date.now(),
+              completedAt: Date.now(),
+            };
+          }
+          (fbReplaceGridData(ee), g(ee));
+        }
+        async function R() {
+          if (!a.current || l.current) return;
+          l.current = !0;
+          try {
+            (g(f()), fbEnsureGenerationPlans());
+            const N = zd(),
+              $ = N.autoRetry !== !1,
+              ee = Math.min(3, Math.max(0, Number(N.retryRounds) || 0));
+            Ve.message.info(
+              `开始多轮生成：并发 ${fbMaxInFlight(N.maxInFlight)} 条；每行 ${fbGenerationRounds(N.generationRounds)} 轮，每次 ${fbConfiguredOutputsPerRound(N)} 个；不足目标时再补跑`,
+            );
+            for (; a.current; ) {
+              const ne = fbPlanCandidates("base", ee);
+              if (ne.length) {
+                const oe = ne[0].progress.baseDone,
+                  ie = ne.filter((re) => re.progress.baseDone === oe);
+                Ve.message.info(
+                  `开始第${oe + 1}轮，本轮 ${ie.length} 条分镜`,
+                );
+                await Promise.all(
+                  ie.map((re) =>
+                    fbRunPlannedAttemptSafely(re, $, "base", ee),
+                  ),
+                );
+                continue;
               }
-              if (!a.current) break;
-              Ve.message.info(
-                `第${ce}轮已提交完，正在等待本轮生成结果，再统一排查失败项`,
-              );
-              const fe = await fbWaitForRound(de, ce),
-                he = fe.filter((pe) => pe.status === "failed");
-              if (!oe || !he.length || se >= ae || !a.current) {
-                he.length &&
-                  Ve.message.warning(
-                    `仍有 ${he.length} 条失败，已保留在表格中，可稍后手动重生`,
-                  );
-                break;
-              }
-              const pe = he.some((me) => fbLooksRateLimited(me.message)),
-                me = Math.max(
-                  pe ? 900 : 60,
-                  Math.max(60, Number(re) || 300) * Math.pow(2, se),
+              if (!$ || !ee) break;
+              const oe = fbPlanCandidates("repair", ee);
+              if (!oe.length) break;
+              const ie = oe[0].progress.repairDone,
+                re = ie + 1,
+                ae = oe.filter((le) => le.progress.repairDone === ie),
+                se = ae.some(({ row: le }) =>
+                  fbLooksRateLimited(le.message),
                 ),
-                ge = Date.now() + me * 1e3;
-              for (const Ce of he)
+                ce = Math.max(
+                  se ? 900 : 60,
+                  Math.max(30, Number(zd().retryRoundWait) || 30) *
+                    Math.pow(2, ie),
+                ),
+                de = Date.now() + ce * 1e3;
+              for (const { row: le, index: fe } of ae)
                 m(
-                  Ce.id,
+                  le.id,
                   {
-                    message: `${Ce.message || "Flow 生成失败"}；第${ce}轮已结束，${Math.ceil(me)}秒后进入第${ce + 1}轮温和补跑`,
-                    retryScheduledAt: ge,
+                    status: "pending",
+                    message: `成功品仍有缺口；${Math.ceil(ce)}秒后进入失败补跑第${re}/${ee}轮`,
+                    retryScheduledAt: de,
                   },
-                  C(Ce.id, 0)?.index,
+                  fe,
                 );
               Ve.message.warning(
-                pe
-                  ? `检测到疑似频率/容量限制，等待 ${Math.ceil(me / 60)} 分钟后再补跑 ${he.length} 条`
-                  : `第${ce}轮有 ${he.length} 条失败，等待 ${Math.ceil(me / 60)} 分钟后再统一补跑`,
+                se
+                  ? `检测到疑似频率/容量限制，等待 ${Math.ceil(ce / 60)} 分钟后补跑 ${ae.length} 条`
+                  : `等待 ${Math.ceil(ce)} 秒后开始失败补跑第${re}/${ee}轮，共 ${ae.length} 条`,
               );
-              if (!(await fbGentleWait(me))) break;
-              le = he
-                .map((Ce) => C(Ce.id, 0))
-                .filter(Boolean)
-                .map(({ row: Ce, index: Ae }) => {
-                  m(
-                    Ce.id,
-                    {
-                      status: "pending",
-                      message: `进入第${ce + 1}轮温和补跑`,
-                      retryScheduledAt: 0,
-                    },
-                    Ae,
-                  );
-                  return { row: C(Ce.id, Ae)?.row || Ce, index: Ae };
-                });
+              if (!(await fbGentleWait(ce))) break;
+              await Promise.all(
+                ae.map((le) =>
+                  fbRunPlannedAttemptSafely(le, $, "repair", ee),
+                ),
+              );
             }
+            fbFinalizeGenerationShortfalls($, ee);
+          } catch (N) {
+            (console.error("[Flow批量生成] 批量调度异常", N),
+              (a.current = !1),
+              fbReleaseInternalWaits(),
+              s(!1),
+              fbSetKeepAwake(!1),
+              (window.currentProcess = null),
+              Ve.message.error(
+                `批量调度发生异常，已安全停止新增提交；现有结果不会丢失：${N?.message || String(N)}`,
+              ));
           } finally {
             l.current = !1;
             T();
@@ -33051,6 +34233,14 @@ ${V}`;
             const ie = N[oe];
             if (!fbHasContent(ie)) continue;
             if (ie.status === "submitting") {
+              const activeProcess = window.currentProcess,
+                submitKey = `${ie.id}:${ie.attempt}`,
+                submitStillActive =
+                  c.current.has(submitKey) &&
+                  activeProcess?.rowId === ie.id &&
+                  Number(activeProcess?.attempt) === Number(ie.attempt) &&
+                  fbBindingIsCurrent(activeProcess);
+              if (submitStillActive) continue;
               N[oe] = { ...ie, status: "pending", message: "从断点继续" };
               ne = !0;
             } else if (ie.status === "generating") {
@@ -33067,7 +34257,7 @@ ${V}`;
                 ? {
                     ...ie,
                     status: "ready",
-                    message: `检测到生成跟踪已中断或已超过三分钟，已保留 ${results.length} 个现有视频；可先点击“下载”，需要补足数量时再手动重生`,
+                    message: `检测到生成跟踪已中断或已超过安全等待时间，已保留 ${results.length} 个现有视频；可先点击“下载”，需要补足数量时再手动重生`,
                     successfulOutputs: results.length,
                     failedOutputs: Math.max(
                       0,
@@ -33078,21 +34268,87 @@ ${V}`;
                 : {
                     ...ie,
                     status: "pending",
-                    message: "生成跟踪已中断或已超过三分钟，从断点继续",
+                    message: "生成跟踪已中断或已超过安全等待时间，从断点继续",
+                  };
+              ne = !0;
+            } else if (ie.status === "downloading" && !p.current.has(ie.id)) {
+              const results = Array.isArray(ie.results) ? ie.results : [];
+              N[oe] = results.length
+                ? {
+                    ...ie,
+                    status: "download_failed",
+                    message: `检测到下载跟踪已中断；已保留 ${results.length} 个视频，请点击本行“下载”继续`,
+                  }
+                : {
+                    ...ie,
+                    status: "failed",
+                    message: "下载跟踪已中断，且没有找到可恢复的视频结果",
+                    failedAt: Date.now(),
                   };
               ne = !0;
             }
           }
           return (ne && (fbReplaceGridData(N), g(N)), N);
         }
+        function fbPreflightRows() {
+          const N = f();
+          let $ = 0,
+            ee = 0,
+            ne = !1;
+          for (let oe = 0; oe < N.length; oe++) {
+            const ie = N[oe];
+            if (!fbHasContent(ie) || fbIsCompleted(ie)) continue;
+            if (fbIsActiveStatus(ie.status)) {
+              $++;
+              continue;
+            }
+            if (["ready", "download_failed"].includes(ie.status)) continue;
+            const re = P(ie);
+            if (re) {
+              ee++;
+              const ae = /图片|首帧|尾帧|素材图/.test(re)
+                ? "missing_image"
+                : "validation_failed";
+              if (ie.status !== ae || ie.message !== re) {
+                ((N[oe] = { ...ie, status: ae, message: re }), (ne = !0));
+              }
+              continue;
+            }
+            $++;
+            if (
+              [
+                "configuration_failed",
+                "validation_failed",
+                "missing_image",
+                "stopped",
+              ].includes(ie.status)
+            ) {
+              ((N[oe] = { ...ie, status: "pending", message: "预检通过，等待生成" }),
+                (ne = !0));
+            }
+          }
+          return (ne && (fbReplaceGridData(N), g(N)), { valid: $, invalid: ee });
+        }
         function W() {
           if (a.current) return R();
-          (A(),
-            (a.current = !0),
+          A();
+          fbInfrastructureFailures.current = 0;
+          const N = fbPreflightRows();
+          if (!N.valid)
+            return Ve.message.warning(
+              N.invalid
+                ? `没有可运行的分镜；${N.invalid} 条信息不完整，请查看“生成状态”`
+                : "没有需要继续生成的分镜",
+            );
+          ((a.current = !0),
             s(!0),
             fbSetKeepAwake(!0),
             (window.currentPageId = ab()),
-            Ve.message.success("已从首个未完成分镜继续"),
+            Ve.message.success(
+              N.invalid
+                ? `预检通过 ${N.valid} 条；跳过 ${N.invalid} 条信息不完整的分镜`
+                : `预检通过 ${N.valid} 条，开始继续未完成分镜`,
+            ),
             R());
         }
         function V() {
@@ -33114,7 +34370,8 @@ ${V}`;
             f()
               .map(($) => $.id)
               .filter(Boolean),
-          );
+            ),
+            $ = fbClearDefaultSettings();
           ((a.current = !1),
             fbReleaseInternalWaits(),
             (l.current = !1),
@@ -33122,24 +34379,32 @@ ${V}`;
             fbSetKeepAwake(!1),
             p.current.clear(),
             (window.currentProcess = null));
-          KA(($) => {
-            const ee = { ...$ };
-            for (const [ne, oe] of Object.entries(ee))
-              N.has(oe?.rowId) && delete ee[ne];
-            return ee;
+          ((fbMaterialOnlyRef.current = !1),
+            setFbMaterialOnly(!1),
+            VMe($),
+            o.resetFields(),
+            o.setFieldsValue($),
+            _v.save.flush?.());
+          KA((ee) => {
+            const ne = { ...ee };
+            for (const [oe, ie] of Object.entries(ne))
+              N.has(ie?.rowId) && delete ne[oe];
+            return ne;
           });
           (fbSetPageExplicitlyCleared(ab(), !0),
             fbReplaceGridData([]),
             g([]),
             d(),
-            Ve.message.success("当前分镜表已全部清空"));
+            Ve.message.success(
+              "已清空分镜表并恢复全部默认设置；视频模型已切回免费版 Veo 3.1 - Lite [Lower Priority]",
+            ));
         }
         function fbConfirmClearAll() {
           Ve.Modal.confirm({
             className: "fb-clear-confirm",
             title: "确认一键清空吗？",
             content:
-              "将清空当前表格的文字、已加载图片、生成状态和断点记录，此操作无法撤销。",
+              "将清空表格、图片、生成状态和断点，并把上部与下部所有选项恢复默认（视频模型切回免费版 Veo 3.1 - Lite [Lower Priority]）。此操作无法撤销。",
             okText: "确认清空",
             cancelText: "取消",
             okType: "danger",
@@ -33174,29 +34439,28 @@ ${V}`;
             ...oe,
             interval: Math.max(1, Number(oe.interval) || 20),
             intervalRandom: Math.max(0, Number(oe.intervalRandom) || 0),
-            maxInFlight: Math.min(
-              4,
-              Math.max(1, Number(oe.maxInFlight) || 1),
-            ),
+            maxInFlight: fbMaxInFlight(oe.maxInFlight),
+            generationType: fbGenerationType(oe.generationType),
             outputsPerPrompt: Math.min(
               4,
               Math.max(1, Number(oe.outputsPerPrompt) || 1),
             ),
+            generationRounds: fbGenerationRounds(oe.generationRounds),
             retryRounds: Math.min(
               3,
               Math.max(0, Number(oe.retryRounds) || 0),
             ),
             retryRoundWait: Math.max(
-              60,
-              Number(oe.retryRoundWait) || 75,
+              30,
+              Number(oe.retryRoundWait) || 30,
             ),
             videoModel: O9[oe.videoModel]
               ? oe.videoModel
               : "veo_3_1_lite_low_priority",
             aspectRatio:
               oe.aspectRatio === "LANDSCAPE" ? "LANDSCAPE" : "PORTRAIT",
-            defaultRowMode: fbMode(oe.defaultRowMode || "VIDEO_REFERENCES"),
             autoRetry: oe.autoRetry !== !1,
+            singleOutputMode: oe.singleOutputMode !== !1,
             download: oe.download !== !1,
           };
         }
@@ -33213,7 +34477,7 @@ ${V}`;
               oe = {
                 format: FB_CHECKPOINT_FORMAT,
                 schemaVersion: FB_CHECKPOINT_SCHEMA_VERSION,
-                pluginVersion: "2.3.26",
+                pluginVersion: "2.3.56",
                 checkpointId: fbNewId(),
                 exportedAt: ee.toISOString(),
                 exportedAtLocal: ee.toLocaleString(),
@@ -33257,11 +34521,23 @@ ${V}`;
             const targetPageId = fbAdoptCurrentTaskPageId(),
               ee = fbCheckpointSettings(N),
               ne = ee.downloadFolder || fbFolderPath(N.downloadFolder || ""),
-              oe = fbCheckpointRestoreRows(N.rows, ne),
+              migratedRows = (Array.isArray(N.rows) ? N.rows : []).map((row) =>
+                String(row?.videoType ?? "").trim()
+                  ? row
+                  : {
+                      ...row,
+                      videoType: fbLegacyVideoType(row, ee.generationType),
+                    },
+              ),
+              oe = fbCheckpointRestoreRows(migratedRows, ne),
               ie = new Set(
                 [...f(), ...oe].map((le) => le?.id).filter(Boolean),
               ),
-              re = fbRowsForStorage(oe);
+              re = fbRowsForStorage(
+                String(N?.pluginVersion || "") === "2.3.54"
+                  ? oe.map(fbResetV254UnsubmittedAttempts)
+                  : oe,
+              );
             ((a.current = !1),
               (l.current = !1),
               fbReleaseInternalWaits(),
@@ -33370,13 +34646,36 @@ ${V}`;
           if (!N) return;
           await Promise.all([GA.ready, _v.ready, d7.ready]);
           const $ = zd(),
-            ee = {};
-          ($.maxInFlightV231 ||
-            ((ee.maxInFlight = 1), (ee.maxInFlightV231 = !0)),
-            $.retryDefaultsV237 ||
-              ((ee.retryRounds = 3),
+            ee = {},
+            repairV254UnsubmittedAttempts = !$.submitPipelineFixV255;
+          repairV254UnsubmittedAttempts &&
+            (ee.submitPipelineFixV255 = !0);
+          if (!$.concurrencyDefaultsV245) {
+            ((ee.maxInFlight = 4), (ee.concurrencyDefaultsV245 = !0));
+          } else if (Number($.maxInFlight) !== fbMaxInFlight($.maxInFlight)) {
+            ee.maxInFlight = fbMaxInFlight($.maxInFlight);
+          }
+          if (!$.generationTypeDefaultsV245) {
+            ((ee.generationType = "IMAGE_TO_VIDEO"),
+              (ee.generationTypeDefaultsV245 = !0));
+          }
+          if (!$.retryDefaultsV237) {
+            ((ee.retryRounds = 3),
               (ee.retryRoundWait = 75),
-              (ee.retryDefaultsV237 = !0)));
+              (ee.retryDefaultsV237 = !0));
+          }
+          if (!$.multiRoundDefaultsV242) {
+            ((ee.outputsPerPrompt = 1),
+              (ee.generationRounds = 3),
+              (ee.multiRoundDefaultsV242 = !0));
+          }
+          if (!$.singleOutputDefaultsV243) {
+            ((ee.singleOutputMode = !0),
+              (ee.outputsPerPrompt = 1),
+              (ee.interval = 1),
+              (ee.retryRoundWait = 30),
+              (ee.singleOutputDefaultsV243 = !0));
+          }
           if (Object.keys(ee).length) {
             await h7((ne) => ({
               ...ne,
@@ -33423,6 +34722,8 @@ ${V}`;
                 ));
             }
           }
+          repairV254UnsubmittedAttempts &&
+            (ne = ne.map(fbResetV254UnsubmittedAttempts));
           fbReplaceGridData(ne);
           const restoredRows = A();
           (fbReplaceGridData(restoredRows),
@@ -33432,6 +34733,10 @@ ${V}`;
           setTimeout(() => h()?.render(), 100);
         }
         async function J(N) {
+          const fields = (Array.isArray(N) ? N : [N]).filter((field) =>
+            ["image", "endImage"].includes(field),
+          );
+          if (!fields.length) fields.push("image", "endImage");
           const $ = await fbWaitForImages();
           if (!$.length)
             return Ve.message.warning(
@@ -33443,45 +34748,58 @@ ${V}`;
           const ie = new Map(),
             re = new Set();
           for (let ae = 0; ae < ee.length; ae++) {
-            const le = ee[ae],
-              se = N === "image" ? "imageName" : "endImageName",
-              ce = String(le[se] || "").trim();
-            if (!ce) continue;
-            const de = fbStemKey(ce);
-            let ue = ie.get(de);
-            if (!ue) {
-              ((ue = fbFindImage(ce, $)),
-                ie.set(de, ue),
-                ue.duplicateResolved && re.add(de));
+            let le = ee[ae],
+              matched = 0;
+            if (fbIsTextVideoRow(le)) {
+              ee[ae] = le;
+              continue;
             }
-            const { image: fe } = ue;
-            fe
-              ? ((ee[ae] = {
+            for (const field of fields) {
+              const nameField = field === "image" ? "imageName" : "endImageName",
+                ce = String(le[nameField] || "").trim();
+              if (!ce) continue;
+              const de = fbStemKey(ce);
+              let ue = ie.get(de);
+              if (!ue) {
+                ((ue = fbFindImage(ce, $)),
+                  ie.set(de, ue),
+                  ue.duplicateResolved && re.add(de));
+              }
+              const { image: fe } = ue;
+              if (fe) {
+                (le = {
                   ...le,
-                  [N]: {
+                  [field]: {
                     primaryMediaKey: fe.primaryMediaKey,
                     displayName: fe.displayName,
                   },
-                  status: ["missing_image", "validation_failed"].includes(
-                    le.status,
-                  )
-                    ? "pending"
-                    : le.status,
-                  message: ["missing_image", "validation_failed"].includes(
-                    le.status,
-                  )
-                    ? ""
-                    : le.message,
-                }),
-                ne++)
-              : (oe++,
-                fbIsCompleted(le) ||
-                  (ee[ae] = {
+                });
+                (ne++, matched++);
+              } else {
+                (oe++, (le = { ...le, [field]: null }));
+              }
+            }
+            const unresolved = [
+              ["image", "imageName"],
+              ["endImage", "endImageName"],
+            ]
+              .filter(
+                ([mediaField, nameField]) =>
+                  String(le[nameField] || "").trim() &&
+                  !le[mediaField]?.primaryMediaKey,
+              )
+              .map(([, nameField]) => String(le[nameField]).trim());
+            if (!fbIsCompleted(le))
+              unresolved.length
+                ? (le = {
                     ...le,
-                    [N]: null,
                     status: "missing_image",
-                    message: `集合中未找到图片“${ce}”`,
-                  }));
+                    message: `集合中未找到图片：${unresolved.join("、")}`,
+                  })
+                : matched &&
+                  ["missing_image", "validation_failed"].includes(le.status) &&
+                  (le = { ...le, status: "pending", message: "" });
+            ee[ae] = le;
           }
           (fbReplaceGridData(ee), g(ee));
           const ae = [
@@ -33491,7 +34809,73 @@ ${V}`;
           ]
             .filter(Boolean)
             .join("，");
+          if (!ne && !oe)
+            return Ve.message.warning("表格的两列图片名都是空的，没有可加载的图片");
           (oe ? Ve.message.warning(ae) : Ve.message.success(ae), d());
+        }
+        function fbToggleMaterialOnly() {
+          if (fbGenerationType() === "TEXT_TO_VIDEO")
+            return Ve.message.info("文生视频仅支持素材模式，切换生成方式后可关闭");
+          const N = !fbMaterialOnlyRef.current;
+          ((fbMaterialOnlyRef.current = N), setFbMaterialOnly(N));
+          if (!N)
+            return (
+              Ve.message.info("已关闭仅素材模式；之后可逐行选择素材或帧模式"),
+              d()
+            );
+          const $ = f(),
+            ee = $.filter(fbHasContent).length,
+            ne = fbRowsWithMaterialMode($);
+          (fbReplaceGridData(ne),
+            g(ne),
+            Ve.message.success(
+              ee
+                ? `已开启仅素材模式，并将 ${ee} 条已填写分镜设为素材`
+                : "已开启仅素材模式；之后提取、粘贴或手工填写的分镜会自动设为素材",
+            ),
+            d());
+        }
+        function fbChangeGenerationType(N) {
+          const $ = fbGenerationType(N),
+            rows = f();
+          u({ generationType: $ });
+          if ($ === "MIXED")
+            return (
+              d(),
+              Ve.message.success(
+                "已切换到图文混生：请在每行“生成方式”中选择图生或文生",
+              )
+            );
+          const nextRows = rows.map((ee) =>
+            fbHasContent(ee) ? fbTransitionRowVideoType(ee, $) : ee,
+          );
+          (fbReplaceGridData(nextRows), g(nextRows),
+            Ve.message.success(
+              $ === "TEXT_TO_VIDEO"
+                ? "已将全部已填写分镜设为文生视频；图片数据会保留但不参与生成"
+                : "已将全部已填写分镜设为图生视频；原帧模式和秒数会尽量恢复",
+            ));
+        }
+        function fbToggleSingleOutputMode() {
+          const N = zd().singleOutputMode === !1;
+          if (!N)
+            return (
+              u({ singleOutputMode: !1 }),
+              Ve.message.info(
+                "已关闭每次只生成1条；现在可以在下方选择每次生成2、3或4条",
+              )
+            );
+          const $ = {
+            singleOutputMode: !0,
+            outputsPerPrompt: 1,
+            interval: 1,
+            retryRoundWait: 30,
+          };
+          (u($),
+            o.setFieldsValue($),
+            Ve.message.success(
+              "已开启每次只生成1条；生成间隔设为1秒，轮间等待设为30秒",
+            ));
         }
         function K(N) {
           const $ = C(N.rowId, N.rowIndex);
@@ -33501,7 +34885,7 @@ ${V}`;
           const $ = C(N?.rowId, N?.rowIndex);
           if (!$ || Number($.row.attempt) !== Number(N?.attempt)) return !1;
           const ee = N?.bindingKey || N?.downloadBindingKey,
-            ne = ZA(N?.fileBase || N?.clipName),
+            ne = ZA(N?.clipName || N?.fileBase),
             oe = ZA($.row.clipName);
           return (
             (!ee || $.row.downloadBindingKey === ee) &&
@@ -33812,42 +35196,60 @@ ${V}`;
               ee.push(ce);
               continue;
             }
-            let de;
-            try {
-              m(
-                N.rowId,
-                {
-                  status: "downloading",
-                  message: `正在通过当前 Flow 登录状态获取第 ${le + 1}/${re.length} 个视频`,
-                  results: re,
-                  downloadedFiles: ee,
-                },
-                N.rowIndex,
-              );
-              const downloadAuthorization = await pv.send(
-                  "resolveFlowMediaUrl",
-                  re[le].url,
+            let de,
+              fe = "";
+            for (let downloadAttempt = 1; downloadAttempt <= 3; downloadAttempt++) {
+              try {
+                m(
+                  N.rowId,
+                  {
+                    status: "downloading",
+                    message: `正在通过当前 Flow 登录状态获取第 ${le + 1}/${re.length} 个视频${downloadAttempt > 1 ? `（下载重试 ${downloadAttempt}/3）` : ""}`,
+                    results: re,
+                    downloadedFiles: ee,
+                  },
+                  N.rowIndex,
+                );
+                const downloadAuthorization = await pv.send(
+                    "resolveFlowMediaUrl",
+                    re[le].url,
+                  ),
+                  authorizedDownloadUrl =
+                    downloadAuthorization?.url || re[le].url;
+                (m(
+                  N.rowId,
+                  {
+                    status: "downloading",
+                    message: `已取得视频授权，正在下载第 ${le + 1}/${re.length} 个视频${downloadAttempt > 1 ? `（重试 ${downloadAttempt}/3）` : ""}`,
+                    results: re,
+                    downloadedFiles: ee,
+                  },
+                  N.rowIndex,
                 ),
-                authorizedDownloadUrl =
-                  downloadAuthorization?.url || re[le].url;
+                  (de = await pv.send("download", authorizedDownloadUrl, ce)));
+              } catch (downloadError) {
+                de = { error: downloadError?.message || String(downloadError) };
+              }
+              if (!fbBindingIsCurrent(N)) return !1;
+              fe =
+                de?.error ||
+                (de?.state !== "complete"
+                  ? "浏览器未确认文件下载完成"
+                  : "");
+              if (!fe) break;
+              if (downloadAttempt >= 3 || !fbRetryableDownloadError(fe)) break;
               (m(
                 N.rowId,
                 {
                   status: "downloading",
-                  message: `已取得视频授权，正在下载第 ${le + 1}/${re.length} 个视频`,
+                  message: `第 ${le + 1}/${re.length} 个视频下载失败，${downloadAttempt * 2}秒后自动重试：${fe}`,
                   results: re,
                   downloadedFiles: ee,
                 },
                 N.rowIndex,
               ),
-                (de = await pv.send("download", authorizedDownloadUrl, ce)));
-            } catch (fe) {
-              de = { error: fe?.message || String(fe) };
+                await Zc(downloadAttempt * 2));
             }
-            if (!fbBindingIsCurrent(N)) return !1;
-            const fe =
-              de?.error ||
-              (de?.state !== "complete" ? "浏览器未确认文件下载完成" : "");
             if (fe) {
               (downloadErrors.push(`${se}：${fe}`),
                 m(
@@ -33883,7 +35285,7 @@ ${V}`;
               N.rowId,
               {
                 status: "download_failed",
-                message: `生成成功 ${re.length} 个、失败 ${generatedFailures} 个；下载成功 ${ee.length} 个、下载失败 ${downloadErrors.length} 个：${downloadErrors.join("；")}`,
+                message: `生成成功 ${re.length} 个、失败 ${generatedFailures} 个；下载成功 ${ee.length} 个、下载失败 ${downloadErrors.length} 个。本行结果已保留，可点“下载”重试：${downloadErrors.join("；")}`,
                 results: re,
                 downloadedFiles: ee,
                 successfulOutputs: re.length,
@@ -33891,17 +35293,11 @@ ${V}`;
               },
               N.rowIndex,
             );
-            if (a.current) {
-              ((a.current = !1),
-                fbReleaseInternalWaits(),
-                s(!1),
-                (window.currentProcess = null));
-            }
             (Ve.message.error(
               `${oe} 有 ${downloadErrors.length} 个文件下载失败，其余 ${ee.length} 个已下载`,
             ),
               Ve.message.warning(
-                "检测到下载失败，已自动暂停后续提交；刷新 Flow 后可直接点该行“下载”重试",
+                "本行已自动重试3次并保留生成结果；其他分镜继续运行，可稍后点本行“下载”重试",
               ));
             return !1;
           }
@@ -33949,7 +35345,12 @@ ${V}`;
             downloadFolder: ee.row.downloadFolder || jse(f(), ee.row.clipName),
             bindingKey: ee.row.downloadBindingKey,
           };
-          await M(ne, ee.row.results);
+          p.current.add(ee.row.id);
+          try {
+            await M(ne, ee.row.results);
+          } finally {
+            (p.current.delete(ee.row.id), T());
+          }
         }
         function q(N, $) {
           const ee = C(N, $);
@@ -33977,6 +35378,22 @@ ${V}`;
                failedOutputs: 0,
                outputFailureMessages: [],
                generationId: "",
+              planRounds: 0,
+              planOutputsPerRound: 0,
+              targetSuccessfulOutputs: 0,
+              baseRoundsCompleted: 0,
+              repairRoundsCompleted: 0,
+              totalSuccessfulOutputs: 0,
+              totalFailedOutputs: 0,
+              allResults: [],
+              allDownloadedFiles: [],
+              planPhase: "",
+              planRound: 0,
+              planBatchOutputs: 0,
+              planComplete: !1,
+              planTargetMet: !1,
+              planStartedAt: 0,
+              planCompletedAt: 0,
               downloadFileBase: "",
               downloadFolder: "",
               downloadBindingKey: "",
@@ -33996,9 +35413,7 @@ ${V}`;
         }
         function T() {
           const N = f().filter(fbHasContent),
-            $ = N.some((ee) =>
-              ["submitting", "generating", "downloading"].includes(ee.status),
-            );
+            $ = N.some((ee) => fbIsActiveStatus(ee.status));
           !l.current &&
             !$ &&
             ((a.current = !1), s(!1), fbSetKeepAwake(!1));
@@ -34008,9 +35423,16 @@ ${V}`;
           D = I.filter((N) =>
             ["success", "partial_success"].includes(N.status),
           ).length,
-          L = I.filter((N) =>
-            ["submitting", "generating", "downloading"].includes(N.status),
-          ).length;
+          L = I.filter((N) => fbIsActiveStatus(N.status)).length,
+          fbAwaitingDownloadCount = I.filter(
+            (N) =>
+              ["ready", "download_failed"].includes(N.status) &&
+              Array.isArray(N.results) &&
+              N.results.length,
+          ).length,
+          fbCurrentGenerationType = fbGenerationType(),
+          fbMaterialModeActive =
+            fbMaterialOnly || fbCurrentGenerationType === "TEXT_TO_VIDEO";
         return Z.jsxs(Ve.Modal, {
           open: t,
           afterOpenChange: B,
@@ -34029,27 +35451,88 @@ ${V}`;
                   " 条 · 进行中 ",
                   L,
                   " 条",
+                  fbAwaitingDownloadCount
+                    ? ` · 待下载 ${fbAwaitingDownloadCount} 条`
+                    : "",
                 ],
               }),
-              Z.jsxs("div", {
+              Z.jsxs("label", {
+                className: "fb-target-rounds",
+                title:
+                  "每行都会完整跑完这里设置的轮数；全部设定轮次结束后，成功品不足的行再进入失败分轮补跑",
+                children: [
+                  Z.jsx("span", { children: "每行目标轮数" }),
+                  Z.jsx(Ve.InputNumber, {
+                    min: 1,
+                    max: 10,
+                    step: 1,
+                    value: fbGenerationRounds(zd().generationRounds),
+                    disabled: i || L > 0,
+                    onFocus: (N) => N.target.select(),
+                    onChange: (N) =>
+                      u({ generationRounds: fbGenerationRounds(N) }),
+                    style: { width: 86 },
+                  }),
+                  Z.jsx("span", { children: "轮" }),
+                ],
+              }),
+              Z.jsx("div", {
                 className: "fb-title-mode",
                 children: [
-                  Z.jsx("span", { children: "默认模式：" }),
-                  Z.jsx(Ve.Segmented, {
+                  Z.jsx(Ve.Button, {
+                    type: "primary",
                     size: "small",
+                    className: "fb-primary-action fb-load-images-action",
+                    disabled:
+                      fbCurrentGenerationType === "TEXT_TO_VIDEO" || i || L > 0,
+                    title:
+                      fbCurrentGenerationType === "TEXT_TO_VIDEO"
+                        ? "文生视频不需要加载图片"
+                        : "按两列图片名匹配当前集合中的图片",
+                    onClick: () => J(["image", "endImage"]),
+                    children: "一键加载图片",
+                  }),
+                  Z.jsx(Ve.Button, {
+                    size: "small",
+                    className: `fb-material-mode-toggle${fbMaterialModeActive ? " is-active" : ""}`,
+                    disabled:
+                      fbCurrentGenerationType === "TEXT_TO_VIDEO" || i || L > 0,
+                    title: fbMaterialModeActive
+                      ? "已开启：之后提取、粘贴或填写的分镜都会自动使用素材模式；再次点击可关闭"
+                      : "可在提取前先开启；之后提取、粘贴或填写的分镜都会自动使用素材模式",
+                    "aria-pressed": fbMaterialModeActive,
+                    onClick: fbToggleMaterialOnly,
+                    children: fbMaterialModeActive
+                      ? "✓ 仅素材模式"
+                      : "仅素材模式",
+                  }),
+                  Z.jsx(Ve.Button, {
+                    size: "small",
+                    className: `fb-single-output-toggle${zd().singleOutputMode !== !1 ? " is-active" : ""}`,
                     disabled: i || L > 0,
-                    value: fbDefaultMode(),
+                    title:
+                      zd().singleOutputMode !== !1
+                        ? "已开启：无论下方原来选择几个，每次提交都只生成1条；点击可关闭"
+                        : "已关闭：每次提交使用下方“每条生成数量”的设置；点击可恢复每次1条",
+                    "aria-pressed": zd().singleOutputMode !== !1,
+                    onClick: fbToggleSingleOutputMode,
+                    children:
+                      zd().singleOutputMode !== !1
+                        ? "✓ 每次只生成1条"
+                        : "每次只生成1条",
+                  }),
+                  Z.jsx(Ve.Segmented, {
+                    className: "fb-generation-type",
+                    value: fbCurrentGenerationType,
+                    disabled: i || L > 0,
+                    title:
+                      "图生/文生可一键批量设置；图文混生时在每行“生成方式”中独立选择",
+                    onChange: fbChangeGenerationType,
                     options: [
-                      {
-                        label: "素材模式",
-                        value: "VIDEO_REFERENCES",
-                      },
-                      {
-                        label: "帧模式",
-                        value: "VIDEO_FRAMES",
-                      },
+                      { label: "图生视频", value: "IMAGE_TO_VIDEO" },
+                      { label: "文生视频", value: "TEXT_TO_VIDEO" },
+                      { label: "图文混生", value: "MIXED" },
                     ],
-                    onChange: fbApplyBatchDefaultMode,
                   }),
                 ],
               }),
@@ -34081,15 +35564,16 @@ ${V}`;
                     onClick: fbChooseCheckpointFile,
                     children: "上传 / 恢复断点",
                   }),
+                  Z.jsx("span", {
+                    className: "fb-resume-note",
+                    children:
+                      "换浏览器前先保存断点；恢复后重新加载图片即可继续，失败项仍按分轮规则补跑。",
+                  }),
                 ],
-              }),
-              Z.jsx("span", {
-                className: "fb-resume-note",
-                children:
-                  "被限制或需换浏览器时先保存断点；新集合上传图片、恢复断点并重新加载图片，即可继续。首轮失败仍按分轮规则温和补跑。",
               }),
               Z.jsx(Ve.Button, {
                 type: "primary",
+                className: "fb-primary-action fb-start-action",
                 onClick: W,
                 loading: i,
                 children: "开始 / 继续未完成",
@@ -34102,8 +35586,9 @@ ${V}`;
           wrapClassName: "fb-full-modal-wrap",
           style: {
             top: 0,
-            height: "var(--fb-batch-viewport-height, 100vh)",
-            maxHeight: "var(--fb-batch-viewport-height, 100vh)",
+            width: "100%",
+            height: "var(--fb-batch-viewport-height, 100dvh)",
+            maxHeight: "var(--fb-batch-viewport-height, 100dvh)",
             maxWidth: "none",
             paddingBottom: 0,
             margin: 0,
@@ -34118,22 +35603,19 @@ ${V}`;
               onRowsChanged: w,
               onLoadImages: J,
               rows: fbGridData.current,
+              materialOnly: fbMaterialModeActive,
+              generationType: fbCurrentGenerationType,
             }),
             Z.jsxs(Ve.Form, {
               form: o,
               className: "fb-settings",
               layout: "inline",
-              style: {
-                display: "flex",
-                flexDirection: "row",
-                flexWrap: "wrap",
-                alignItems: "center",
-              },
               onValuesChange: u,
               children: [
                 Z.jsx(Ve.Form.Item, {
                   name: "interval",
                   label: "生成间隔（秒）",
+                  className: "fb-setting-interval",
                   children: Z.jsx(Ve.InputNumber, {
                     min: 1,
                     step: 1,
@@ -34143,6 +35625,7 @@ ${V}`;
                 Z.jsx(Ve.Form.Item, {
                   name: "intervalRandom",
                   label: "正负随机（秒）",
+                  className: "fb-setting-random",
                   children: Z.jsx(Ve.InputNumber, {
                     min: 0,
                     step: 1,
@@ -34151,17 +35634,8 @@ ${V}`;
                   }),
                 }),
                 Z.jsx(Ve.Form.Item, {
-                  name: "maxInFlight",
-                  label: "同时生成上限",
-                  children: Z.jsx(Ve.Segmented, {
-                    options: [1, 2, 3, 4].map((N) => ({
-                      label: `${N}条`,
-                      value: N,
-                    })),
-                  }),
-                }),
-                Z.jsx(Ve.Form.Item, {
                   label: "视频模型",
+                  className: "fb-setting-model",
                   children: Z.jsx("select", {
                     className: "fb-native-select",
                     value: zd().videoModel || "veo_3_1_lite_low_priority",
@@ -34172,8 +35646,22 @@ ${V}`;
                   }),
                 }),
                 Z.jsx(Ve.Form.Item, {
+                  name: "maxInFlight",
+                  label: "并发分镜",
+                  className: "fb-setting-concurrency",
+                  children: Z.jsx(Ve.InputNumber, {
+                    min: 1,
+                    max: 12,
+                    step: 1,
+                    disabled: i || L > 0,
+                    title: "允许同时在途的分镜数量（1–12，默认4）",
+                    style: { width: 62 },
+                  }),
+                }),
+                Z.jsx(Ve.Form.Item, {
                   name: "aspectRatio",
                   label: "尺寸",
+                  className: "fb-setting-ratio",
                   children: Z.jsx(Ve.Segmented, {
                     options: [
                       { label: "9:16", value: "PORTRAIT" },
@@ -34183,8 +35671,14 @@ ${V}`;
                 }),
                 Z.jsx(Ve.Form.Item, {
                   name: "outputsPerPrompt",
-                  label: "数量",
+                  label: "每条生成数量",
+                  className: "fb-setting-outputs",
                   children: Z.jsx(Ve.Segmented, {
+                    disabled: zd().singleOutputMode !== !1 || i || L > 0,
+                    title:
+                      zd().singleOutputMode !== !1
+                        ? "顶部已开启“每次只生成1条”；关闭后可选择2、3或4条"
+                        : "设置每次提交生成的视频数量",
                     options: [1, 2, 3, 4].map((N) => ({
                       label: `${N}个`,
                       value: N,
@@ -34227,12 +35721,14 @@ ${V}`;
                 Z.jsx(Ve.Form.Item, {
                   name: "autoRetry",
                   label: "失败后分轮补跑",
+                  className: "fb-setting-retry-toggle",
                   valuePropName: "checked",
                   children: Z.jsx(Ve.Checkbox, {}),
                 }),
                 Z.jsx(Ve.Form.Item, {
                   name: "retryRounds",
                   label: "失败补跑轮数",
+                  className: "fb-setting-retry-rounds",
                   children: Z.jsx(Ve.InputNumber, {
                     min: 0,
                     max: 3,
@@ -34243,8 +35739,9 @@ ${V}`;
                 Z.jsx(Ve.Form.Item, {
                   name: "retryRoundWait",
                   label: "轮间等待（秒）",
+                  className: "fb-setting-retry-wait",
                   children: Z.jsx(Ve.InputNumber, {
-                    min: 60,
+                    min: 30,
                     max: 3600,
                     step: 15,
                     style: { width: 82 },
@@ -34253,8 +35750,12 @@ ${V}`;
                 Z.jsx(Ve.Form.Item, {
                   name: "download",
                   label: "自动下载",
+                  className: "fb-setting-download",
                   valuePropName: "checked",
-                  children: Z.jsx(Ve.Checkbox, {}),
+                  children: Z.jsx(Ve.Checkbox, {
+                    title:
+                      "关闭后必须手动下载当前行，插件才会继续提交下一条分镜",
+                  }),
                 }),
               ],
             }),
@@ -34426,31 +35927,12 @@ ${V}`;
                 const i = o.key.toLowerCase();
                 if (i === "v" && o.target.closest(".ant-modal-container")) {
                   o.stopImmediatePropagation();
-                  return;
                 }
-                ["+", "=", "-", "_", "0"].includes(i) &&
-                  (o.preventDefault(), o.stopImmediatePropagation());
-              },
-              o = (i) => {
-                (i.ctrlKey || i.metaKey) &&
-                  (i.preventDefault(), i.stopImmediatePropagation());
-              },
-              i = (s) => {
-                (s.preventDefault(), s.stopImmediatePropagation());
               };
             return (
               document.addEventListener("keydown", n, !0),
-              document.addEventListener("wheel", o, {
-                capture: !0,
-                passive: !1,
-              }),
-              document.addEventListener("gesturestart", i, !0),
-              document.addEventListener("gesturechange", i, !0),
               () => {
-                (document.removeEventListener("keydown", n, !0),
-                  document.removeEventListener("wheel", o, !0),
-                  document.removeEventListener("gesturestart", i, !0),
-                  document.removeEventListener("gesturechange", i, !0));
+                document.removeEventListener("keydown", n, !0);
               }
             );
           }, []),

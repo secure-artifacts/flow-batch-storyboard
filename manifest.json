@@ -2,10 +2,13 @@
   "manifest_version": 3,
   "name": "Flow批量生成 · 分镜表",
   "description": "按分镜表批量生成 Flow 视频，支持按文件名匹配图片、断点续作、温和分轮补跑与严格命名下载",
-  "version": "2.3.26",
-  "author": "Flow Batch Storyboard Contributors",
+  "version": "2.3.56",
+  "author": {
+    "name": "作者名称",
+    "email": "example@gmail.com"
+  },
   "minimum_chrome_version": "116",
-  "version_name": "2.3.26（多视频回调与补下载修复）",
+  "version_name": "2.3.56（三处显示细节修复）",
   "content_scripts": [
     {
       "js": ["assets/index.ts-loader-DJMxT1XF.js"],

@@ -38,10 +38,9 @@ function New-ForwardSlashZip {
   } finally { $stream.Dispose() }
 }
 
-$tag = "v2.3.26"
+$tag = "v2.3.56"
 $chromeZip = Join-Path $ReleaseRoot "flow-batch-storyboard-${tag}-chrome.zip"
 $firefoxZip = Join-Path $ReleaseRoot "flow-batch-storyboard-${tag}-firefox.zip"
 New-ForwardSlashZip (Join-Path $BuildRoot "chrome") $chromeZip
 New-ForwardSlashZip (Join-Path $BuildRoot "firefox") $firefoxZip
 Get-Item -LiteralPath $chromeZip, $firefoxZip | Select-Object Name, Length
-

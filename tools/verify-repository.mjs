@@ -27,7 +27,7 @@ for (const extensionRoot of [root, path.join(root, "firefox")]) {
     fs.readFileSync(path.join(extensionRoot, "manifest.json"), "utf8"),
   );
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "2.3.26");
+  assert.equal(manifest.version, "2.3.56");
   assert(
     manifest.content_scripts || manifest.background || manifest.action,
     "Repository root must be recognizable as a browser extension",
@@ -37,8 +37,8 @@ for (const extensionRoot of [root, path.join(root, "firefox")]) {
     "utf8",
   );
   assert(mainScript.includes("fbRepairPrematureMissingOutputs"));
-  assert(mainScript.includes("FB_GENERATION_HARD_LIMIT_MS = 3 * 60 * 1e3"));
-  assert(mainScript.includes('pluginVersion: "2.3.26"'));
+  assert(mainScript.includes("FB_GENERATION_HARD_LIMIT_MS = 15 * 60 * 1e3"));
+  assert(mainScript.includes('pluginVersion: "2.3.56"'));
   assert(!mainScript.includes("const submissionGroups = new Map()"));
 }
 
@@ -96,4 +96,3 @@ findForbidden(root);
 assert.deepEqual(forbiddenFiles, []);
 
 console.log(`Repository verification passed; checked ${javascriptFiles.length} JavaScript files.`);
-

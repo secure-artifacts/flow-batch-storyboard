@@ -42,8 +42,8 @@
 推送代码后通过标签触发 CI：
 
 ```bash
-git tag -a v2.3.26 -m "Release v2.3.26"
-git push origin v2.3.26
+git tag -a v2.3.56 -m "Release v2.3.56"
+git push origin v2.3.56
 ```
 
 确认 Actions 成功后检查：
@@ -52,7 +52,7 @@ git push origin v2.3.26
 - 每个 ZIP 解压后根目录直接包含 `manifest.json`。
 - 所有 Release asset 的 uploader 都是 `github-actions[bot]`。
 - 每个 asset 都有 Attestation。
-- 工作流来源是 `refs/tags/v2.3.26`。
+- 工作流来源是 `refs/tags/v2.3.56`。
 - 不要人工上传、替换或补充 Release asset。
 
 ## 提交审核表单

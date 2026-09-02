@@ -13,6 +13,14 @@ assert(restoreSource, "Checkpoint restore implementation was not found");
 
 const context = {
   crypto: { randomUUID: () => "synthetic-row-id" },
+  zd: () => ({ generationType: "IMAGE_TO_VIDEO" }),
+  O9: {
+    abra: "Omni 1.1 Flash",
+    veo_3_1_lite: "Veo 3.1 - Lite",
+    veo_3_1_fast: "Veo 3.1 - Fast",
+    veo_3_1_quality: "Veo 3.1 - Quality",
+    veo_3_1_lite_low_priority: "Veo 3.1 - Lite [Lower Priority]",
+  },
   Date,
   Math,
   encodeURIComponent,
@@ -63,4 +71,3 @@ for (const outputCount of [2, 3, 4]) {
 }
 
 console.log("Regression tests passed for 2, 3 and 4 outputs.");
-

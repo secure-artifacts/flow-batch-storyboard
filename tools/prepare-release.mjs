@@ -42,10 +42,9 @@ for (const extensionRoot of [chromeBuild, firefoxBuild]) {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(extensionRoot, "manifest.json"), "utf8"),
   );
-  if (manifest.version !== "2.3.26") {
+  if (manifest.version !== "2.3.56") {
     throw new Error(`Unexpected manifest version in ${extensionRoot}`);
   }
 }
 
 console.log("Prepared build/chrome and build/firefox extension roots.");
-
