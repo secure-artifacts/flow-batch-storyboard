@@ -8,9 +8,14 @@ const extensionEntries = [
   "assets",
   "injects",
   "transformers",
+  "checkpoint-v2.js",
   "externals.js",
   "manifest.json",
+  "native-flow-bridge.js",
+  "run-logger.js",
   "service-worker-loader.js",
+  "trusted-types.js",
+  "安装说明.md",
 ];
 
 function copyEntry(sourceRoot, targetRoot, entry) {
@@ -42,7 +47,7 @@ for (const extensionRoot of [chromeBuild, firefoxBuild]) {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(extensionRoot, "manifest.json"), "utf8"),
   );
-  if (manifest.version !== "2.3.56") {
+  if (manifest.version !== "3.0") {
     throw new Error(`Unexpected manifest version in ${extensionRoot}`);
   }
 }

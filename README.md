@@ -1,6 +1,6 @@
 # Flow 批量生成 · 分镜表
 
-[![Release](https://img.shields.io/badge/release-v2.3.56-blue)](https://github.com/secure-artifacts/flow-batch-storyboard/releases)
+[![Release](https://img.shields.io/badge/release-v3.0.0-blue)](https://github.com/secure-artifacts/flow-batch-storyboard/releases)
 [![Browser Extension](https://img.shields.io/badge/type-browser%20extension-green)](#安装)
 
 用于 Google Labs Flow 的分镜表批量生成浏览器扩展，支持 Chromium 与 Firefox。项目根目录是可直接加载的 Chromium 扩展；Firefox 版本位于 `firefox/`。
@@ -66,8 +66,8 @@ Firefox 正式版长期安装通常需要 Mozilla 签名。
 Release 只能由 GitHub Actions 通过 `v*` 标签创建：
 
 ```bash
-git tag -a v2.3.56 -m "Release v2.3.56"
-git push origin v2.3.56
+git tag -a v3.0.0 -m "Release v3.0.0"
+git push origin v3.0.0
 ```
 
 工作流会测试项目、生成 Chromium/Firefox ZIP、为最终 ZIP 生成 GitHub Artifact Attestation，并由 `github-actions[bot]` 上传 Release。请勿在 GitHub 网页中人工添加或替换 Release 文件。
@@ -102,7 +102,7 @@ git push origin :refs/tags/v2.3.27
 安装 GitHub CLI 后可验证下载文件：
 
 ```bash
-gh attestation verify flow-batch-storyboard-v2.3.56-chrome.zip --repo secure-artifacts/flow-batch-storyboard
+gh attestation verify flow-batch-storyboard-v3.0.0-chrome.zip --repo secure-artifacts/flow-batch-storyboard
 ```
 
 ## 安全与隐私

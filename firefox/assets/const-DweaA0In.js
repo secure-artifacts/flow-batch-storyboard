@@ -1,1 +1,1 @@
-var e=`flow-batch-generate`,t=`https://labs.google/fx/zh/tools/flow`,n=[t,`https://labs.google/fx/zh/tools/flow/project/*`];export{t as n,n as r,e as t};
+var e=`flow-batch-generate`,t=`https://flow.google.com`,n=[`https://flow.google.com/*`,`https://labs.google/fx/zh/tools/flow`,`https://labs.google/fx/zh/tools/flow/project/*`];export{t as n,n as r,e as t};

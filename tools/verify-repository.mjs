@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requiredExtensionEntries = [
   "manifest.json",
+  "checkpoint-v2.js",
+  "native-flow-bridge.js",
+  "run-logger.js",
   "service-worker-loader.js",
+  "trusted-types.js",
   "assets/background.ts-FwaP8xAx.js",
   "assets/index.ts-loader-DJMxT1XF.js",
   "assets/logo-16.png",
@@ -27,7 +31,7 @@ for (const extensionRoot of [root, path.join(root, "firefox")]) {
     fs.readFileSync(path.join(extensionRoot, "manifest.json"), "utf8"),
   );
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.version, "2.3.56");
+  assert.equal(manifest.version, "3.0");
   assert(
     manifest.content_scripts || manifest.background || manifest.action,
     "Repository root must be recognizable as a browser extension",
@@ -37,8 +41,8 @@ for (const extensionRoot of [root, path.join(root, "firefox")]) {
     "utf8",
   );
   assert(mainScript.includes("fbRepairPrematureMissingOutputs"));
-  assert(mainScript.includes("FB_GENERATION_HARD_LIMIT_MS = 15 * 60 * 1e3"));
-  assert(mainScript.includes('pluginVersion: "2.3.56"'));
+  assert(mainScript.includes("FB_GENERATION_HARD_LIMIT_MS = 5 * 60 * 1e3"));
+  assert(mainScript.includes('pluginVersion: "3.0"'));
   assert(!mainScript.includes("const submissionGroups = new Map()"));
 }
 

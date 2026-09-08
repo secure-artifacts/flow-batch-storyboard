@@ -46,7 +46,7 @@ function fbIsFlowMediaRedirectUrl(e) {
   try {
     const t = new URL(String(e || ``));
     return (
-      t.origin === `https://labs.google` &&
+      [`https://labs.google`, `https://flow.google.com`].includes(t.origin) &&
       t.pathname.includes(`/fx/api/trpc/media.getMediaUrlRedirect`)
     );
   } catch {
@@ -93,11 +93,11 @@ async function fbResolveFlowMediaRedirect(e, t) {
             null,
             Error(`Flow 登录已过期，请刷新 Flow 页面并重新登录后再下载`),
           );
-        o.origin !== `https://labs.google` &&
+        ![`https://labs.google`, `https://flow.google.com`].includes(o.origin) &&
           c({ url: r, resolved: !0, statusCode: e.statusCode });
       };
     (chrome.webRequest.onBeforeRedirect.addListener(l, {
-      urls: [`https://labs.google/*`],
+      urls: [`https://labs.google/*`, `https://flow.google.com/*`],
     }),
       (o = setTimeout(
         () =>
@@ -144,15 +144,170 @@ async function fbResolveFlowMediaRedirect(e, t) {
         ));
   });
 }
-async function o(e, t) {
+const fbDownloadLedgerKey = `fbDownloadLedgerV2358`;
+let fbDownloadLedgerLock = Promise.resolve();
+const fbDownloadSingleFlights = new Map();
+function fbReadDownloadLedger() {
+  return new Promise((e) => {
+    chrome.storage.local.get(fbDownloadLedgerKey, (t) =>
+      e(t?.[fbDownloadLedgerKey] || {}),
+    );
+  });
+}
+function fbUpdateDownloadLedger(e, t) {
+  const n = fbDownloadLedgerLock
+    .catch(() => {})
+    .then(async () => {
+      const n = await fbReadDownloadLedger(),
+        r = { ...n, [e]: { ...(n[e] || {}), ...t, ledgerKey: e } };
+      const entries = Object.entries(r);
+      if (entries.length > 800)
+        entries
+          .sort(
+            ([, a], [, b]) =>
+              Number(b.completedAt || b.finishedAt || b.requestedAt) -
+              Number(a.completedAt || a.finishedAt || a.requestedAt),
+          )
+          .slice(500)
+          .forEach(([key]) => delete r[key]);
+      await new Promise((e) =>
+        chrome.storage.local.set({ [fbDownloadLedgerKey]: r }, e),
+      );
+      return r[e];
+    });
+  return ((fbDownloadLedgerLock = n), n);
+}
+function fbDownloadLedgerEntryKey(e, t, n = ``) {
+  const identity = String(n || ``).trim();
+  return identity ? `media:${identity}` : `${e}\n${t || ``}`;
+}
+async function fbGetDownloadState(e, t, i = ``) {
+  const r = fbDownloadLedgerEntryKey(e, t, i),
+    ledger = await fbReadDownloadLedger();
+  let n = ledger?.[r];
+  if (!n && i) {
+    const legacyEntry = ledger?.[fbDownloadLedgerEntryKey(e, t)];
+    if (legacyEntry) {
+      n = await fbUpdateDownloadLedger(r, {
+        ...legacyEntry,
+        stableIdentity: String(i),
+        migratedAt: Date.now(),
+      });
+    }
+  }
+  if (
+    n?.state === `preparing` &&
+    Date.now() - Number(n.requestedAt || 0) < 30 * 60 * 1e3
+  )
+    return n;
+  if (!n?.id) return { state: `missing`, filename: e };
   try {
-    const n = await chrome.downloads.download({
+    const t = (await chrome.downloads.search({ id: n.id }))?.[0];
+    if (!t)
+      return await fbUpdateDownloadLedger(r, {
+        id: 0,
+        state: `missing`,
+        error: `浏览器中已找不到原下载任务`,
+        finishedAt: Date.now(),
+      });
+    if (t?.state === `complete`)
+      return await fbUpdateDownloadLedger(r, {
+        state: `complete`,
+        actualFilename: t.filename || n.actualFilename || ``,
+        completedAt: n.completedAt || Date.now(),
+      });
+    if (t?.state === `interrupted`)
+      return await fbUpdateDownloadLedger(r, {
+        state: `interrupted`,
+        error: t.error || n.error || `浏览器下载被中断`,
+        finishedAt: Date.now(),
+      });
+    if (t?.state === `in_progress`)
+      return { ...n, state: `in_progress` };
+  } catch {}
+  return n;
+}
+async function fbStartTrackedDownloadOnce(e, t, n = e, i = ``) {
+  try {
+    const requestedFilename = t.replace(/\/+/g, `/`),
+      stableSourceUrl = String(n || e),
+      stableIdentity = String(i || ``).trim(),
+      ledgerEntryKey = fbDownloadLedgerEntryKey(
+        requestedFilename,
+        stableSourceUrl,
+        stableIdentity,
+      );
+    const existing = await fbGetDownloadState(
+      requestedFilename,
+      stableSourceUrl,
+      stableIdentity,
+    );
+    if ([`complete`, `in_progress`, `preparing`].includes(existing?.state))
+      return existing;
+    await fbUpdateDownloadLedger(ledgerEntryKey, {
+      id: 0,
+      state: `preparing`,
+      requestedFilename,
+      sourceUrl: stableSourceUrl,
+      stableIdentity,
+      requestedAt: Date.now(),
+      error: ``,
+    });
+    const downloadId = await chrome.downloads.download({
       url: e,
-      filename: t.replace(/\/+/g, `/`),
+      filename: requestedFilename,
       conflictAction: `uniquify`,
       saveAs: !1,
     });
-    if (n == null) return { error: `浏览器没有创建下载任务` };
+    if (downloadId == null) {
+      await fbUpdateDownloadLedger(ledgerEntryKey, {
+        state: `interrupted`,
+        error: `浏览器没有创建下载任务`,
+        finishedAt: Date.now(),
+      });
+      return { error: `浏览器没有创建下载任务` };
+    }
+    return await fbUpdateDownloadLedger(ledgerEntryKey, {
+      id: downloadId,
+      state: `in_progress`,
+      requestedFilename,
+      sourceUrl: stableSourceUrl,
+      stableIdentity,
+      downloadUrl: e,
+      requestedAt: Date.now(),
+      error: ``,
+    });
+  } catch (e) {
+    const requestedFilename = t.replace(/\/+/g, `/`),
+      ledgerEntryKey = fbDownloadLedgerEntryKey(requestedFilename, n, i);
+    await fbUpdateDownloadLedger(ledgerEntryKey, {
+      state: `interrupted`,
+      error: e.message,
+      finishedAt: Date.now(),
+    }).catch(() => {});
+    return (console.error(`创建下载任务出现错误：`, e), { error: e.message });
+  }
+}
+async function fbStartTrackedDownload(e, t, n = e, i = ``) {
+  const requestedFilename = t.replace(/\/+/g, `/`),
+    ledgerEntryKey = fbDownloadLedgerEntryKey(requestedFilename, n, i);
+  if (fbDownloadSingleFlights.has(ledgerEntryKey))
+    return fbDownloadSingleFlights.get(ledgerEntryKey);
+  const operation = fbStartTrackedDownloadOnce(e, t, n, i).finally(() => {
+    fbDownloadSingleFlights.get(ledgerEntryKey) === operation &&
+      fbDownloadSingleFlights.delete(ledgerEntryKey);
+  });
+  fbDownloadSingleFlights.set(ledgerEntryKey, operation);
+  return operation;
+}
+async function o(e, t, n = e) {
+  try {
+    const started = await fbStartTrackedDownload(e, t, n);
+    if (started?.error || started?.state === `complete`) return started;
+    const downloadId = started?.id,
+      ledgerEntryKey = started?.ledgerKey;
+    if (downloadId == null || !ledgerEntryKey)
+      return { error: `浏览器没有创建可跟踪的下载任务` };
     return await new Promise((e) => {
       let t = !1,
         r = !1,
@@ -165,28 +320,36 @@ async function o(e, t) {
         },
         s = (n) => {
           if (t) return;
-          ((t = !0), o(), e(n));
+          ((t = !0),
+            o(),
+            fbUpdateDownloadLedger(ledgerEntryKey, {
+              ...n,
+              actualFilename: n.filename || ``,
+              completedAt: n.state === `complete` ? Date.now() : 0,
+              finishedAt: n.error ? Date.now() : 0,
+            }).finally(() => e(n)));
         },
         l = async () => {
           if (t || r) return;
           r = !0;
           try {
-            const e = (await chrome.downloads.search({ id: n }))?.[0];
+            const e = (await chrome.downloads.search({ id: downloadId }))?.[0];
             e?.state === `complete`
-              ? s({ id: n, state: `complete`, filename: e.filename || `` })
+              ? s({ id: downloadId, state: `complete`, filename: e.filename || `` })
               : e?.state === `interrupted` &&
-                s({ id: n, error: e.error || `浏览器下载被中断` });
+                s({ id: downloadId, state: `interrupted`, error: e.error || `浏览器下载被中断` });
           } catch {}
           finally {
             r = !1;
           }
         },
         c = (e) => {
-          if (e.id !== n) return;
+          if (e.id !== downloadId) return;
           if (e.state?.current === `complete`) return void l();
           e.state?.current === `interrupted` &&
             s({
-              id: n,
+              id: downloadId,
+              state: `interrupted`,
               error: e.error?.current || `浏览器下载被中断`,
             });
         };
@@ -194,7 +357,13 @@ async function o(e, t) {
         (i = setInterval(l, 1e3)),
         (a = setTimeout(
           async () => {
-            (await l(), t || s({ id: n, error: `等待浏览器下载完成超时` }));
+            (await l(),
+              t ||
+                s({
+                  id: downloadId,
+                  state: `interrupted`,
+                  error: `等待浏览器下载完成超时`,
+                }));
           },
           30 * 60 * 1e3,
         )),
@@ -261,6 +430,13 @@ async function fbDownloadText(e, t, n = `text/plain;charset=utf-8`) {
   }
 }
 const fbKeepAwakeTabs = new Set();
+chrome.runtime.onMessage.addListener((e, t, n) => {
+  if (e?.type !== `fbSaveRunLogV2392`) return;
+  fbDownloadText(String(e.text || ``), String(e.filename || `Flow断点及日志_2.3.126.json`), `application/json;charset=utf-8`)
+    .then((e) => n?.({ ok: !e?.error, result: e }))
+    .catch((e) => n?.({ ok: !1, error: String(e?.message || e) }));
+  return !0;
+});
 function fbRefreshKeepAwake() {
   try {
     if (!chrome.power?.requestKeepAwake) return !1;
@@ -275,9 +451,22 @@ function fbRefreshKeepAwake() {
 function fbDropKeepAwakeTab(e) {
   fbKeepAwakeTabs.delete(e) && fbRefreshKeepAwake();
 }
+function fbIsSupportedFlowProjectUrl(e) {
+  try {
+    const t = new URL(String(e || ``));
+    return (
+      (t.origin === `https://labs.google` &&
+        t.pathname.startsWith(`/fx/zh/tools/flow`)) ||
+      (t.origin === `https://flow.google.com` &&
+        t.pathname.startsWith(`/project/`))
+    );
+  } catch {
+    return !1;
+  }
+}
 chrome.tabs.onRemoved.addListener(fbDropKeepAwakeTab);
 chrome.tabs.onUpdated.addListener((e, t) => {
-  t.url && !/^https:\/\/labs\.google\/fx\/zh\/tools\/flow(?:\/|$)/.test(t.url) &&
+  t.url && !fbIsSupportedFlowProjectUrl(t.url) &&
     fbDropKeepAwakeTab(e);
 });
 var s = class {
@@ -559,7 +748,11 @@ function C() {
     g.on(`resolveFlowMediaUrl`, async function (e) {
       return await fbResolveFlowMediaRedirect(e, this?.sender?.tab?.id);
     }),
-    g.on(`download`, async (e, t) => o(e, t)),
+    g.on(`getDownloadState`, async (e, t, n) => fbGetDownloadState(e, t, n)),
+    g.on(`startTrackedDownload`, async (e, t, n, r) =>
+      fbStartTrackedDownload(e, t, n, r),
+    ),
+    g.on(`download`, async (e, t, n) => o(e, t, n)),
     g.on(`downloadText`, async (e, t, n) => fbDownloadText(e, t, n)),
     g.on(`setKeepAwake`, async function (e) {
       const t = this?.sender?.tab?.id;
@@ -575,14 +768,15 @@ function C() {
     }));
 }
 async function w(e) {
-  if (e.length === 0) return;
-  let t = [...new Set(e.map((e) => e.id))],
-    n = await chrome.scripting.getRegisteredContentScripts({ ids: t });
-  (n.length > 0 &&
+  let t = e.length
+      ? [...new Set(e.map((e) => e.id))]
+      : [`inject-${n}-module`, `inject-${n}-proxy`],
+    r = await chrome.scripting.getRegisteredContentScripts({ ids: t });
+  (r.length > 0 &&
     (await chrome.scripting.unregisterContentScripts({
-      ids: n.map((e) => e.id),
+      ids: r.map((e) => e.id),
     })),
-    await chrome.scripting.registerContentScripts(e));
+    e.length > 0 && (await chrome.scripting.registerContentScripts(e)));
 }
 function T(e, t) {
   if (e === `<all_urls>`) return /^(https?|file):\/\//.test(t);
@@ -651,16 +845,32 @@ function E(e) {
       func: () => {
         const e = document.getElementById(`flow-batch-generate`),
           n = e?.querySelector(`.open-dialog-button`),
-          r = location.href.startsWith(
-            `https://labs.google/fx/zh/tools/flow/project/`,
-          );
+          r =
+            location.href.startsWith(
+              `https://labs.google/fx/zh/tools/flow/project/`,
+            ) ||
+            (location.origin === `https://flow.google.com` &&
+              location.pathname.startsWith(`/project/`));
         return {
           hasRoot: !!e,
           hasLauncher: !!n,
           hiddenOnProjectPage:
             !!n && r && getComputedStyle(e).display === `none`,
+          trustedTypesReady:
+            !window.trustedTypes ||
+            window.__flowBatchTrustedTypesV2360?.ready === !0,
+          renderState:
+            document.documentElement?.getAttribute(
+              `data-flow-batch-render-v2360`,
+            ) || ``,
           startedAt:
             Number(window.__flowBatchInjectBundleStartedAtV2328) || 0,
+          angularDirectPresent:
+            typeof window.__flowBatchAngularDirectCapture?.scanDom === `function`,
+          nativeBridgePresent:
+            typeof window.__flowBatchNativeBridge?.waitUntilReady === `function`,
+          nativeBridgeReady:
+            window.__flowBatchNativeBridge?.isReady?.() === !0,
         };
       },
     });
@@ -691,21 +901,51 @@ function E(e) {
               e && (e.style.display = `block`);
             },
           }));
+        if (!r.angularDirectPresent || !r.nativeBridgeReady) {
+          await chrome.scripting.executeScript({
+            world: `MAIN`,
+            target: { tabId: e },
+            files: [
+              `transformers/angular-direct.js`,
+              `transformers/flow.js`,
+              `transformers/disablePageFreeze.js`,
+              `native-flow-bridge.js`,
+            ],
+          });
+          await new Promise((e) => setTimeout(e, 300));
+          r = await fbReadFlowInjectionState(e);
+        }
         return;
       }
-      await chrome.scripting.insertCSS({
-        target: { tabId: e },
-        files: [`injects/index.css`],
-      });
+      await chrome.scripting
+        .insertCSS({
+          target: { tabId: e },
+          files: [`injects/index.css`],
+        })
+        .catch((n) =>
+          console.debug(`Flow 界面样式补注入失败，继续恢复界面脚本`, n),
+        );
       if (r.startedAt) {
         await chrome.scripting.executeScript({
           world: `MAIN`,
           target: { tabId: e },
-          files: [`externals.js`],
+          files: [`trusted-types.js`, `externals.js`],
         });
         await new Promise((e) => setTimeout(e, 1500));
         r = await fbReadFlowInjectionState(e);
-        if (r.hasLauncher) return;
+        if (r.hasLauncher) {
+          await chrome.scripting.executeScript({
+            world: `MAIN`,
+            target: { tabId: e },
+            files: [
+              `transformers/angular-direct.js`,
+              `transformers/flow.js`,
+              `transformers/disablePageFreeze.js`,
+              `native-flow-bridge.js`,
+            ],
+          });
+          return;
+        }
         await chrome.scripting.executeScript({
           world: `MAIN`,
           target: { tabId: e },
@@ -721,30 +961,58 @@ function E(e) {
         await chrome.scripting.executeScript({
           world: `MAIN`,
           target: { tabId: e },
-          files: [`transformers/flow.js`, `transformers/disablePageFreeze.js`],
+          files: [
+            `transformers/angular-direct.js`,
+            `transformers/flow.js`,
+            `transformers/disablePageFreeze.js`,
+          ],
         });
       }
       await chrome.scripting.executeScript({
         world: `MAIN`,
         target: { tabId: e },
-        files: [`externals.js`, `injects/index.js`],
+        files: [
+          `trusted-types.js`,
+          `externals.js`,
+          `native-flow-bridge.js`,
+          `injects/index.js`,
+        ],
       });
       await new Promise((e) => setTimeout(e, 1500));
       r = await fbReadFlowInjectionState(e);
       if (r.hasLauncher)
         console.info(`已向 Flow 标签页补注入插件入口`, e);
-      else console.warn(`Flow 标签页补注入后仍未发现插件入口`, e);
+      else
+        console.warn(`Flow 标签页补注入后仍未发现插件入口`, e, {
+          trustedTypesReady: r.trustedTypesReady,
+          renderState: r.renderState,
+        });
     } catch (e) {
       console.debug(`向已打开的 Flow 标签页补注入失败`, e);
     } finally {
       fbEnsuringFlowTabs.delete(e);
     }
   }
+  chrome.runtime.onMessage.addListener((e, n, r) => {
+    if (e?.type !== `fbEnsureFlowInjectionV2360`) return;
+    const i = n?.tab?.id,
+      a = n?.tab?.url || ``;
+    if (!i || !t.some((e) => T(e, a))) {
+      r?.({ ok: !1, ignored: !0 });
+      return;
+    }
+    (fbEnsureAlreadyOpenFlowTab(i, a)
+      .then(() => r?.({ ok: !0 }))
+      .catch((e) => r?.({ ok: !1, error: String(e?.message || e) })),
+      s(i, a));
+    return !0;
+  });
   (chrome.tabs.onUpdated.addListener(async (e, n, r) => {
-    const i = !!r?.url && t.some((e) => T(e, r.url));
-    if (!i) return;
-    (s(e, r.url), n?.status === `loading` && a(e));
-    n?.status === `complete` && fbEnsureAlreadyOpenFlowTab(e, r.url);
+    const i = n?.url || r?.url || ``;
+    if (!i || !t.some((e) => T(e, i))) return;
+    (s(e, i), (n?.status === `loading` || n?.url) && (await a(e)));
+    (n?.status === `complete` || n?.url) &&
+      fbEnsureAlreadyOpenFlowTab(e, i);
   }),
     chrome.tabs.query({}, (e) => {
       for (let n of e)
@@ -753,30 +1021,68 @@ function E(e) {
           t.some((e) => T(e, n.url)) &&
           (fbEnsureAlreadyOpenFlowTab(n.id, n.url), s(n.id, n.url));
     }));
+  return {
+    ensureTab: fbEnsureAlreadyOpenFlowTab,
+    isSupportedUrl: (e) => t.some((n) => T(n, e)),
+  };
 }
-(E({ hostMatch: t, extensionId: n, isDev: !1 }),
+const fbFlowInjectionRuntime = E({ hostMatch: t, extensionId: n, isDev: !1 });
+const fbRequiredFlowOrigins = [
+  `https://labs.google/*`,
+  `https://flow.google.com/*`,
+];
+function fbPermissionBoolean(e, t) {
+  return new Promise((n) => {
+    let r = !1;
+    const i = (e) => {
+      if (r) return;
+      ((r = !0), n(!!e));
+    };
+    try {
+      const n = chrome.permissions?.[e];
+      if (typeof n !== `function`) return i(!1);
+      const r = n.call(chrome.permissions, t, i);
+      r?.then?.(i, () => i(!1));
+    } catch {
+      i(!1);
+    }
+  });
+}
+async function fbRefreshFlowPermissionBadge() {
+  const e = await fbPermissionBoolean(`contains`, {
+    origins: fbRequiredFlowOrigins,
+  });
+  try {
+    (chrome.action.setBadgeText({ text: e ? `` : `!` }),
+      chrome.action.setBadgeBackgroundColor({ color: `#d93025` }),
+      chrome.action.setTitle({
+        title: e
+          ? `Flow 批量生成：已启用`
+          : `Flow 批量生成：点击一次启用新 Flow 网站`,
+      }));
+  } catch {}
+  return e;
+}
+(fbRefreshFlowPermissionBadge(),
+  chrome.permissions?.onAdded?.addListener(fbRefreshFlowPermissionBadge),
+  chrome.permissions?.onRemoved?.addListener(fbRefreshFlowPermissionBadge),
   f(a),
   C(),
   S(),
-  w([
-    {
-      id: `inject-${n}-module`,
-      js: [`externals.js`, `injects/index.js`],
-      css: [`injects/index.css`],
-      matches: t,
-      runAt: `document_end`,
-      world: `MAIN`,
-    },
-    {
-      id: `inject-${n}-proxy`,
-      js: [`transformers/flow.js`, `transformers/disablePageFreeze.js`],
-      matches: t,
-      runAt: `document_start`,
-      world: `MAIN`,
-    },
-  ]).catch((e) => {
-    console.error(`Failed to register content scripts`, e);
+  w([]).catch((e) => {
+    console.error(`Failed to remove legacy dynamic content scripts`, e);
   }),
-  chrome.action.onClicked.addListener(function (t) {
+  chrome.action.onClicked.addListener(async function (t) {
+    let n = await fbRefreshFlowPermissionBadge();
+    n ||
+      (n = await fbPermissionBoolean(`request`, {
+        origins: fbRequiredFlowOrigins,
+      }));
+    const r = t?.url || ``;
+    if (t?.id && fbFlowInjectionRuntime.isSupportedUrl(r)) {
+      (await fbFlowInjectionRuntime.ensureTab(t.id, r),
+        await fbRefreshFlowPermissionBadge());
+      return;
+    }
     chrome.tabs.create({ url: e, active: !0 });
   }));

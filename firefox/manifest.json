@@ -1,31 +1,79 @@
 {
   "manifest_version": 3,
-  "name": "Flow批量生成 · 分镜表",
+  "name": "Flow批量生成 · 分镜表 3.0",
   "description": "按分镜表批量生成 Flow 视频，支持按文件名匹配图片、断点续作、温和分轮补跑与严格命名下载",
-  "version": "2.3.56",
+  "version": "3.0",
   "author": "作者名称",
   "content_scripts": [
     {
-      "js": ["assets/index.ts-loader-DJMxT1XF.js"],
+      "js": [
+        "transformers/angular-direct.js",
+        "transformers/flow.js",
+        "transformers/disablePageFreeze.js"
+      ],
       "matches": [
         "https://labs.google/fx/zh/tools/flow",
-        "https://labs.google/fx/zh/tools/flow/project/*"
+        "https://labs.google/fx/zh/tools/flow/project/*",
+        "https://flow.google.com/*"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "js": [
+        "assets/index.ts-loader-DJMxT1XF.js"
+      ],
+      "matches": [
+        "https://labs.google/fx/zh/tools/flow",
+        "https://labs.google/fx/zh/tools/flow/project/*",
+        "https://flow.google.com/*"
       ],
       "run_at": "document_end"
+    },
+    {
+      "css": [
+        "injects/index.css"
+      ],
+      "js": [
+        "checkpoint-v2.js",
+        "run-logger.js",
+        "trusted-types.js",
+        "externals.js",
+        "native-flow-bridge.js",
+        "injects/index.js"
+      ],
+      "matches": [
+        "https://labs.google/fx/zh/tools/flow",
+        "https://labs.google/fx/zh/tools/flow/project/*",
+        "https://flow.google.com/*"
+      ],
+      "run_at": "document_end",
+      "world": "MAIN"
     }
   ],
   "background": {
-    "scripts": ["service-worker-loader.js"],
+    "scripts": [
+      "service-worker-loader.js"
+    ],
     "type": "module"
   },
-  "permissions": ["tabs", "scripting", "storage", "downloads", "webRequest"],
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "scripting",
+    "storage",
+    "downloads",
+    "webRequest"
+  ],
   "action": {
+    "default_title": "Flow 批量生成：点击启用当前 Flow 页面",
     "default_icon": "assets/logo-128.png"
   },
   "host_permissions": [
     "https://labs.google/*",
     "https://labs.google/fx/zh/tools/flow",
-    "https://labs.google/fx/zh/tools/flow/project/*"
+    "https://labs.google/fx/zh/tools/flow/project/*",
+    "https://flow.google.com/*"
   ],
   "icons": {
     "16": "assets/logo-16.png",
@@ -37,8 +85,13 @@
   },
   "web_accessible_resources": [
     {
-      "matches": ["https://labs.google/*"],
-      "resources": ["*"]
+      "matches": [
+        "https://labs.google/*",
+        "https://flow.google.com/*"
+      ],
+      "resources": [
+        "*"
+      ]
     }
   ],
   "browser_specific_settings": {
@@ -46,7 +99,9 @@
       "id": "flow-batch-generate-firefox@xiaoyang.local",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
-        "required": ["websiteContent"]
+        "required": [
+          "websiteContent"
+        ]
       }
     }
   }

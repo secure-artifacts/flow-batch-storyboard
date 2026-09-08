@@ -38,7 +38,7 @@ function New-ForwardSlashZip {
   } finally { $stream.Dispose() }
 }
 
-$tag = "v2.3.56"
+$tag = "v3.0.0"
 $chromeZip = Join-Path $ReleaseRoot "flow-batch-storyboard-${tag}-chrome.zip"
 $firefoxZip = Join-Path $ReleaseRoot "flow-batch-storyboard-${tag}-firefox.zip"
 New-ForwardSlashZip (Join-Path $BuildRoot "chrome") $chromeZip

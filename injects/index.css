@@ -510,6 +510,11 @@
   background: #f1f5f9;
   color: #475569;
 }
+#flow-batch-generate .fb-status-verifying {
+  background: #fff7ed;
+  color: #9a3412;
+  font-weight: 700;
+}
 #flow-batch-generate .fb-status-submitting,
 #flow-batch-generate .fb-status-generating,
 #flow-batch-generate .fb-status-downloading {
@@ -815,6 +820,33 @@
   color: #111827;
   font-size: 13px;
   cursor: pointer;
+  color-scheme: light;
+  forced-color-adjust: none;
+}
+.fb-full-modal .fb-native-select option,
+.fb-full-modal .fb-native-select option:checked {
+  background: #ffffff !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  opacity: 1 !important;
+}
+.fb-full-modal .fb-native-select option:checked {
+  background: #dbeafe !important;
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+  font-weight: 700;
+}
+.fb-full-modal .fb-native-select option:disabled {
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  opacity: 1 !important;
+}
+.fb-full-modal .fb-native-select option:hover,
+.fb-full-modal .fb-native-select option:focus {
+  background: #e0ecff !important;
+  color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+  opacity: 1 !important;
 }
 .fb-full-modal .fb-footer {
   display: grid;
@@ -887,7 +919,7 @@
 .fb-full-modal .handsontable .ht_master .wtHolder,
 .fb-full-modal .fb-grid-shell.handsontable .ht_master .wtHolder,
 .fb-full-modal .fb-grid-shell .handsontable .ht_master .wtHolder {
-  overflow-x: auto !important;
+  overflow-x: hidden !important;
   overflow-y: auto !important;
   scrollbar-width: auto;
   scrollbar-color: #52657d #e8eef5;
@@ -896,7 +928,7 @@
 .fb-full-modal .fb-grid-shell.handsontable .ht_master .wtHolder::-webkit-scrollbar,
 .fb-full-modal .fb-grid-shell .handsontable .ht_master .wtHolder::-webkit-scrollbar {
   width: 18px;
-  height: 18px;
+  height: 0;
 }
 .fb-full-modal .handsontable .ht_master .wtHolder::-webkit-scrollbar-track,
 .fb-full-modal .fb-grid-shell.handsontable .ht_master .wtHolder::-webkit-scrollbar-track,
@@ -1181,12 +1213,14 @@
   font-weight: 900;
   line-height: 1;
 }
-.fb-full-modal .fb-status-pending {
+.fb-full-modal .fb-status-pending,
+.fb-full-modal .fb-status-verifying {
   background: #fffbeb;
   color: #b45309;
   font-weight: 700;
 }
-.fb-full-modal .fb-status-pending .fb-status-icon {
+.fb-full-modal .fb-status-pending .fb-status-icon,
+.fb-full-modal .fb-status-verifying .fb-status-icon {
   color: #f59e0b;
 }
 .fb-full-modal .fb-status-submitting,
@@ -1635,3 +1669,19 @@
     max-width: 260px;
   }
 }
+/* The workspace stays high, while safety confirmations must remain above it. */
+.fb-full-modal-wrap {
+  z-index: 2147483000 !important;
+}
+.ant-modal-root:has(.fb-clear-confirm),
+.ant-modal-root:has(.fb-clear-confirm) .ant-modal-mask,
+.ant-modal-root:has(.fb-clear-confirm) .ant-modal-wrap {
+  z-index: 2147483647 !important;
+}
+
+/* Widths fit the actual viewport: no off-screen columns or horizontal travel. */
+.fb-full-modal .fb-grid-shell { min-width: 0; max-width: 100%; }
+.fb-full-modal .handsontable td { overflow: hidden; overflow-wrap: anywhere; }
+.fb-full-modal .handsontable td select, .fb-full-modal .fb-cell-button { max-width: 100%; min-width: 0; }
+
+.ant-modal-wrap:has(.fb-import-confirm){z-index:2147483647!important}
