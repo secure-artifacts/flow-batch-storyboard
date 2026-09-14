@@ -47,7 +47,7 @@ for (const extensionRoot of [chromeBuild, firefoxBuild]) {
   const manifest = JSON.parse(
     fs.readFileSync(path.join(extensionRoot, "manifest.json"), "utf8"),
   );
-  if (manifest.version !== "3.0") {
+  if (manifest.version !== "3.0.30") {
     throw new Error(`Unexpected manifest version in ${extensionRoot}`);
   }
 }
