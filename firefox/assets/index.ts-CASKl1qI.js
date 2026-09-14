@@ -3,6 +3,11 @@ import { t as extensionSlug } from "./const-DweaA0In.js";
 const REQUEST_TYPE = "__flow_batch_firefox_bridge_request__";
 const RESPONSE_TYPE = "__flow_batch_firefox_bridge_response__";
 
+document.documentElement.setAttribute(
+  "data-flow-batch-extension-base-url",
+  chrome.runtime.getURL(""),
+);
+
 // Background -> page. This keeps the original event protocol used by the UI.
 chrome.runtime.onMessage.addListener((message) => {
   if (message.from === extensionSlug) {

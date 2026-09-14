@@ -1,4 +1,5 @@
 import { n as e, r as t, t as n } from "./const-DweaA0In.js";
+const fbDownloadsApi = chrome.downloads;
 var r = {
     type: `array`,
     items: {
@@ -9,8 +10,8 @@ var r = {
     default: [],
   },
   i = {
-    interval: 20,
-    intervalRandom: 10,
+    interval: 1,
+    intervalRandom: 0,
     videoModel: `veo_3_1_lite_low_priority`,
     aspectRatio: `PORTRAIT`,
     outputsPerPrompt: 1,
@@ -208,7 +209,7 @@ async function fbGetDownloadState(e, t, i = ``) {
   }
   if (!n?.id) return { state: `missing`, filename: e };
   try {
-    const t = (await chrome.downloads.search({ id: n.id }))?.[0];
+    const t = (await fbDownloadsApi.search({ id: n.id }))?.[0];
     if (!t)
       return await fbUpdateDownloadLedger(r, {
         id: 0,
@@ -259,7 +260,7 @@ async function fbStartTrackedDownloadOnce(e, t, n = e, i = ``) {
       requestedAt: Date.now(),
       error: ``,
     });
-    const downloadId = await chrome.downloads.download({
+    const downloadId = await fbDownloadsApi.download({
       url: e,
       filename: requestedFilename,
       conflictAction: `uniquify`,
