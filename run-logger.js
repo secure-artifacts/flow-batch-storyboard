@@ -2,20 +2,31 @@
   "use strict";
   if (window.__flowBatchRunLogger) return;
 
-  const VERSION = "3.0";
+  const VERSION = "3.0.30";
   const MAX_EVENTS = 500;
-  const PERSIST_DELAY_MS = 5000;
+  const PERSIST_DELAY_MS = 500;
   const STORAGE_KEY = "flowBatchRunLogV2397";
   const ACTIVE_KEY = "flowBatchRunActiveV2397";
   const currentPageKey = location.pathname;
   const logStore = window.__flowBatchCheckpointV2.createStore("flow-batch-logs-v2");
-  let restored = null, savedLog = null;
+  let restored = null, savedLog = null, localRestored = null;
+  try { localRestored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch {}
   try { savedLog = await logStore.load(); } catch(error) { console.warn("日志存储读取失败", error); }
   if (savedLog?.meta?.[0]?.pageKey === currentPageKey) {
-    restored = {...savedLog.meta[0], events:(savedLog.events||[]).map(row=>row.event),
+    const storedEvents = (savedLog.events || []).map(row => row?.event).filter(event => event?.type);
+    restored = {...savedLog.meta[0], events: storedEvents,
       inputRows:Object.fromEntries((savedLog.inputs||[]).map(row=>[row.ref,row.input]))};
   }
-  try { if (!restored) restored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch {}
+  // IndexedDB writes from an interrupted/frozen renderer can contain placeholder
+  // rows. Prefer the valid, newer local snapshot instead of silently restoring
+  // hundreds of empty events.
+  if (localRestored?.pageKey === currentPageKey) {
+    const localEvents = Array.isArray(localRestored.events) ? localRestored.events.filter(event => event?.type) : [];
+    const storedEvents = Array.isArray(restored?.events) ? restored.events : [];
+    const localSequence = localEvents.reduce((max, event) => Math.max(max, Number(event?.sequence) || 0), 0);
+    const storedSequence = storedEvents.reduce((max, event) => Math.max(max, Number(event?.sequence) || 0), 0);
+    if (!restored || localSequence >= storedSequence) restored = { ...localRestored, events: localEvents };
+  }
   if (restored?.pageKey && restored.pageKey !== currentPageKey) restored = null;
   const startedAt = restored?.startedAt || new Date().toISOString();
   let events = Array.isArray(restored?.events) ? restored.events.slice(-MAX_EVENTS) : [];
@@ -43,6 +54,24 @@
 
   const now = () => new Date().toISOString();
   const text = (value) => String(value ?? "");
+  function uuidPaths(value, path = "$", output = [], depth = 0) {
+    if (value == null || depth > 12 || output.length >= 80) return output;
+    if (typeof value === "string") {
+      for (const match of value.matchAll(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi)) {
+        output.push({ path, value: match[0] });
+        if (output.length >= 80) break;
+      }
+      // batchexecute nests the actual request as JSON strings.
+      if (/^[\[{]/.test(value.trim())) {
+        try { uuidPaths(JSON.parse(value), `${path}#json`, output, depth + 1); } catch {}
+      }
+      return output;
+    }
+    if (typeof value !== "object") return output;
+    if (Array.isArray(value)) value.forEach((item, index) => uuidPaths(item, `${path}[${index}]`, output, depth + 1));
+    else Object.entries(value).slice(0, 120).forEach(([key, item]) => uuidPaths(item, `${path}.${key}`, output, depth + 1));
+    return output;
+  }
   const cleanUrl = (value) => {
     try {
       const url = new URL(text(value), location.href);
@@ -70,6 +99,12 @@
     return output;
   }
   function persistNow() {
+    const snapshot = { version: VERSION, pageKey: currentPageKey, startedAt, events, inputRows };
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (error) {
+      // Keep a smaller emergency trace when storage is tight. The latest request
+      // and protocol events are more useful than an old, larger history.
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...snapshot, events: events.slice(-180) })); } catch {}
+    }
     logStore.save({
       meta:[{version:VERSION,pageKey:currentPageKey,startedAt}],
       inputs:Object.entries(inputRows).map(([ref,input])=>({ref,input})),
@@ -158,7 +193,8 @@
     if (fingerprint) aggregatedEvents.set(fingerprint, event);
     events.push(event);
     if (events.length > MAX_EVENTS) events = events.slice(-MAX_EVENTS);
-    persist();
+    if (type === "rpc_request" || type === "protocol:template_rejected" || type === "angular_direct:prepare_complete" || type === "angular_direct:submit_invoked_dom") persistNow();
+    else persist();
   }
   function rowsSnapshot() {
     return [...document.querySelectorAll(".fb-full-modal tbody tr")].slice(0, 300).map((row, index) => ({
@@ -276,11 +312,36 @@
     proto.send = function (body) {
       const rpc = /[?&]rpcids=([^&]+)/.exec(this.__fbLogUrl || "")?.[1] || "";
       if (rpc) {
+        // This logger is intentionally the first network wrapper installed.
+        // Forward the raw request to the protocol learner so Flow builds that
+        // cached an earlier XHR.send reference cannot bypass template learning.
+        try {
+          window.__flowBatchProtocolAdapter?.observeRequest?.(
+            this.__fbLogMethod,
+            this.__fbLogUrl,
+            body,
+            window.currentProcess && { ...window.currentProcess },
+          );
+        } catch (error) {
+          record("protocol:observer_forward_failed", { rpc, message: error?.message || text(error) });
+        }
         let bodyInfo = {};
         try {
           const raw = typeof body === "string" ? body : "", params = new URLSearchParams(raw), fReq = params.get("f.req") || "";
           let parsed; try { parsed = JSON.parse(fReq); } catch {}
-          bodyInfo = { length: raw.length, keys: [...params.keys()].filter((key) => !/token|auth|at/i.test(key)), fReqLength: fReq.length, fReqRpc: parsed?.[0]?.[0]?.[0] || rpc, authFields: [...params.keys()].filter((key) => /token|auth|at/i.test(key)).map((key) => ({ key, present: !!params.get(key), length: text(params.get(key)).length })) };
+          const uuidCandidates = [...new Set(fReq.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi) || [])];
+          bodyInfo = {
+            length: raw.length,
+            keys: [...params.keys()].filter((key) => !/token|auth|at/i.test(key)),
+            fReqLength: fReq.length,
+            fReqRpc: parsed?.[0]?.[0]?.[0] || rpc,
+            // UUIDs are opaque request structure markers. Recording only these
+            // lets us learn a grey-release payload without retaining prompts,
+            // cookies, auth tokens, or other request content.
+            uuidCandidates: /^(?:YhhmEf|MZZa6b|nprQif|eb1hJf)$/i.test(rpc) ? uuidCandidates : undefined,
+            uuidPaths: /^(?:YhhmEf|MZZa6b|nprQif|eb1hJf)$/i.test(rpc) ? uuidPaths(parsed) : undefined,
+            authFields: [...params.keys()].filter((key) => /token|auth|at/i.test(key)).map((key) => ({ key, present: !!params.get(key), length: text(params.get(key)).length })),
+          };
         } catch (error) { bodyInfo = { error: text(error?.message || error) }; }
         record("rpc_request", { rpc, method: this.__fbLogMethod, url: cleanUrl(this.__fbLogUrl), process: window.currentProcess, body: bodyInfo });
         this.addEventListener("loadend", () => {

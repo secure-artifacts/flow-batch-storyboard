@@ -1,14 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "Flow批量生成 · 分镜表 3.0",
+  "name": "FLOW分镜批量-3.0.30-Chrome",
   "description": "按分镜表批量生成 Flow 视频，支持按文件名匹配图片、断点续作、温和分轮补跑与严格命名下载",
-  "version": "3.0",
-  "author": {
-    "name": "作者名称",
-    "email": "example@gmail.com"
-  },
+  "version": "3.0.30",
+  "author": "小羊",
   "minimum_chrome_version": "116",
   "content_scripts": [
+    {
+      "js": [
+        "diagnostics/network-protocol-bridge.js"
+      ],
+      "matches": [
+        "https://flow.google.com/*"
+      ],
+      "run_at": "document_start"
+    },
     {
       "js": [
         "transformers/angular-direct.js",

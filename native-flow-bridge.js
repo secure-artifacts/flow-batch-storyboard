@@ -1,8 +1,35 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.3.126.13";
+  const VERSION = "3.0.30";
   if (window.__flowBatchNativeBridge?.version === VERSION) return;
+
+  let composerLockTail = Promise.resolve();
+  let activeComposerRelease = null;
+  let activeComposerWatchdog = 0;
+  let activeRuntime = null;
+  let activeExpected = null;
+
+  async function acquireComposerLock() {
+    let release;
+    const previous = composerLockTail;
+    composerLockTail = new Promise((resolve) => { release = resolve; });
+    await previous;
+    activeComposerRelease = release;
+    clearTimeout(activeComposerWatchdog);
+    activeComposerWatchdog = setTimeout(() => releaseComposerLock("watchdog"), 120000);
+  }
+
+  function releaseComposerLock(reason = "complete") {
+    clearTimeout(activeComposerWatchdog);
+    activeComposerWatchdog = 0;
+    const release = activeComposerRelease;
+    activeComposerRelease = null;
+    activeRuntime = null;
+    activeExpected = null;
+    release?.();
+    record("composer_lock_released", { reason });
+  }
 
   function normalize(value) {
     return String(value ?? "").normalize("NFKC").trim();
@@ -23,11 +50,11 @@
   }
 
   function promptBox() {
-    return capture()?.prompt || null;
+    return activeRuntime?.component || capture()?.prompt || null;
   }
 
   function composer() {
-    return capture()?.composer || promptBox()?.Ya || null;
+    return activeRuntime?.store || promptBox()?.Wa || null;
   }
 
   function readSignal(value) {
@@ -69,51 +96,19 @@
   function isReady() {
     const box = promptBox();
     const store = composer();
-    const legacy = !!(
-      box &&
-      store &&
-      typeof box.submit === "function" &&
-      typeof box.yV === "function" &&
-      typeof store.clear === "function" &&
-      typeof store.mode === "function" &&
-      typeof store.Nc === "function"
+    return !!(
+      box && store &&
+      typeof box.submit === "function" && typeof box.dW === "function" &&
+      typeof store.clear === "function" && typeof store.Hk === "function" &&
+      typeof store.Ge === "function" && typeof store.setAspectRatio === "function" &&
+      store.Gf?.set && store.nh?.set && store.ng?.set && store.Ra?.set
     );
-    const current = !!(
-      box &&
-      store &&
-      typeof box.submit === "function" &&
-      typeof box.Fe === "function" &&
-      typeof box.zk === "function" &&
-      typeof store.clear === "function" &&
-      typeof store.Fe === "function" &&
-      typeof store.mode === "function" &&
-      typeof store.Ia === "function"
-    );
-    const dynamicCurrent = !!(
-      box &&
-      store &&
-      typeof box.submit === "function" &&
-      (typeof box.Fe === "function" || typeof store.Fe === "function") &&
-      typeof store.clear === "function" &&
-      typeof store.mode === "function" &&
-      typeof store.setAspectRatio === "function" &&
-      store.Ne && typeof store.Ne.set === "function" &&
-      store.lg && typeof store.lg.set === "function" &&
-      store.Ff && typeof store.Ff.set === "function" &&
-      store.Ra && typeof store.Ra.set === "function"
-    );
-    return legacy || current || dynamicCurrent;
   }
 
   async function waitUntilReady(timeout = 12000) {
     try {
       await waitFor(
         () => {
-          try {
-            const state = capture();
-            // Keep factory-captured instances while the page initializes.
-            state?.scanDom?.();
-          } catch {}
           return isReady();
         },
         timeout,
@@ -143,7 +138,7 @@
   }
 
   function mediaId(value, depth = 0, seen = new WeakSet()) {
-    if (value == null || depth > 4) return "";
+    if (value == null || depth > 7) return "";
     if (typeof value === "string")
       return /^[0-9a-f-]{16,}$/i.test(value) ? value : "";
     if (typeof value !== "object" || seen.has(value)) return "";
@@ -152,17 +147,23 @@
       const candidate = normalize(value[key]);
       if (/^[0-9a-f-]{16,}$/i.test(candidate)) return candidate;
     }
-    for (const key of ["tb", "media", "asset", "metadata"]) {
-      const candidate = mediaId(value[key], depth + 1, seen);
+    for (const child of Object.values(value)) {
+      const candidate = mediaId(child, depth + 1, seen);
       if (candidate) return candidate;
     }
     return "";
   }
 
   function attachmentIds() {
-    const store = composer();
-    const list = readSignal(store?.Nc) ?? readSignal(store?.ha);
-    return new Set((Array.isArray(list) ? list : []).map((item) => mediaId(item)).filter(Boolean));
+    return new Set(attachmentSnapshot().map((item) => item.id));
+  }
+
+  function attachmentSnapshot() {
+    const list = readSignal(composer()?.ma);
+    return (Array.isArray(list) ? list : []).map((item) => ({
+      id: mediaId(item),
+      role: normalize(item?.Hd),
+    })).filter((item) => item.id);
   }
 
   function attachedCount() {
@@ -171,10 +172,6 @@
 
   function diagnostics() {
     const state = capture();
-    let promptElements = 0;
-    try {
-      promptElements = document.querySelectorAll("flow-base-prompt-box").length;
-    } catch {}
     return {
       bridgeVersion: VERSION,
       ready: isReady(),
@@ -182,27 +179,35 @@
       factoriesWrapped: Number(state?.factoriesWrapped) || 0,
       domScans: Number(state?.domScans) || 0,
       domContextKind: state?.domContextKind || "",
-      promptElements,
       captureSource: state?.captureSource || "",
+      runtime: state?.diagnostics?.()?.runtime || null,
+      registryCount: state?.diagnostics?.()?.registryCount || 0,
     };
   }
 
   function promptIsEmpty(store = composer()) {
     try {
+      if (typeof store?.prompt?.Df === "function") return !!store.prompt.Df();
       if (typeof store?.Ga === "function") return !!store.Ga();
     } catch {}
-    return false;
+    throw new Error("Flow 内部提示词状态接口不可用");
   }
 
   async function clearPrompt() {
     const store = composer();
     if (!store || typeof store.clear !== "function")
-      throw new Error("Flow 内部 composer 清理接口不可用");
+      throw new Error("Flow 内部 Composer 清理接口不可用；已安全停止");
     store.clear();
     await waitFor(
-      () => attachedCount() === 0 && promptIsEmpty(store),
+      () => promptIsEmpty(store),
       3500,
       "Flow 内部 composer 未能清空",
+      2,
+    );
+    await waitFor(
+      () => attachmentIds().size === 0,
+      5000,
+      "Flow Composer 的旧图片未清空；已阻止继续提交，避免串图",
       2,
     );
     record("composer_cleared");
@@ -259,7 +264,7 @@
 
   function optionId(option) {
     if (typeof option === "string") return option;
-    for (const key of ["id", "value", "familyId", "modelId", "key"]) {
+    for (const key of ["Sg", "id", "value", "familyId", "modelId", "key"]) {
       const value = option?.[key];
       if (typeof value === "string" || typeof value === "number") return value;
     }
@@ -267,7 +272,7 @@
   }
 
   function resolveModel(store, requested) {
-    const options = readSignal(store?.oF) ?? readSignal(store?.Za) ?? readSignal(store?.pF);
+    const options = readSignal(store?.QF) ?? readSignal(store?.oF) ?? readSignal(store?.Za) ?? readSignal(store?.pF);
     if (!Array.isArray(options) || !options.length)
       throw new Error("Flow 尚未返回可用视频模型，请稍后重试");
     const exact = options.find((option) => String(optionId(option)) === String(requested));
@@ -281,214 +286,94 @@
     return ranked[0];
   }
 
-  function currentModelId(store) {
-    return readSignal(store?.mt) ?? readSignal(store?.Jg) ?? readSignal(store?.Qc);
-  }
-
-  function currentDuration(store) {
-    return Number(readSignal(store?.IK) ?? readSignal(store?.ob) ?? readSignal(store?.Ra) ?? readSignal(store?.nb));
-  }
-
   async function configure(options) {
     const store = composer();
-    if (!store) throw new Error("Flow 内部 composer 不可用");
-    const currentApi =
-      typeof store.Fe === "function" &&
-      store.ff &&
-      typeof store.ff.set === "function" &&
-      store.Jg &&
-      typeof store.Jg.set === "function";
-    const dynamicApi =
-      store.Ne && typeof store.Ne.set === "function" &&
-      store.lg && typeof store.lg.set === "function" &&
-      store.Ff && typeof store.Ff.set === "function" &&
-      store.Ra && typeof store.Ra.set === "function";
+    if (!store?.Gf?.set || !store?.nh?.set || !store?.ng?.set || !store?.Ra?.set ||
+        typeof store.setAspectRatio !== "function")
+      throw new Error("Flow 内部 Composer 参数接口不可用；已安全停止");
     const mode = options.mode === "VIDEO_FRAMES" ? "VIDEO_FRAMES" : "VIDEO_REFERENCES";
     const ratio = options.aspectRatio === "LANDSCAPE" ? "LANDSCAPE" : "PORTRAIT";
     const outputs = Math.min(4, Math.max(1, Number(options.outputs) || 1));
-    // Verified against the native x1/x2 radio: Ff is the output count, not Va.
-    const composerOutputs = outputs;
     const seconds = Math.min(10, Math.max(4, Number(options.seconds) || 8));
     const requestedModel = normalize(options.model) || "veo_3_1_lite_low_priority";
-
-    writeSignal(dynamicApi ? store.Ne : currentApi ? store.ff : store.Fe, mode, "模式");
-    if (typeof store.setAspectRatio !== "function")
-      throw new Error("Flow 内部画幅接口不可用");
-    store.setAspectRatio(ratio);
-
     const resolved = resolveModel(store, requestedModel);
-    writeSignal(dynamicApi ? store.lg : currentApi ? store.Jg : store.Rf, resolved.id, "模型");
-    writeSignal(dynamicApi ? store.Ff : currentApi ? store.Rf : store.ff, composerOutputs, "生成数量");
+    writeSignal(store.Gf, mode, "模式");
+    store.setAspectRatio(ratio);
+    writeSignal(store.nh, resolved.id, "模型");
+    writeSignal(store.ng, outputs, "生成数量");
     writeSignal(store.Ra, seconds, "视频时长");
-
-    await waitFor(
-      () => {
-        const modeOk = readSignal(store.mode) === mode;
-        const ratioOk = readSignal(store.aspectRatio) === ratio;
-        const outputsOk = Number(readSignal(dynamicApi ? store.Ff : currentApi ? store.Rf : store.Dp)) === composerOutputs;
-        const modelOk = String(currentModelId(store)) === String(resolved.id);
-        const durationOptions = readSignal(store.qk) ?? readSignal(store.Pl);
-        const selectable =
-          !Array.isArray(durationOptions) ||
-          durationOptions.some(
-            (item) => Number(item?.duration) === seconds && item?.isEnabled !== false,
-          );
-        const durationOk = !selectable || currentDuration(store) === seconds;
-        return modeOk && ratioOk && outputsOk && modelOk && durationOk;
-      },
-      5500,
-      "Flow 内部生成参数未能稳定生效",
-      2,
-    );
-
-    const durationOptions = readSignal(store.qk) ?? readSignal(store.Pl);
-    if (
-      Array.isArray(durationOptions) &&
-      durationOptions.length &&
-      !durationOptions.some(
-        (item) => Number(item?.duration) === seconds && item?.isEnabled !== false,
-      )
-    )
+    const supportedDurations = readSignal(store.Um);
+    if (Array.isArray(supportedDurations) && supportedDurations.length &&
+        !supportedDurations.some((item) => Number(item?.duration) === seconds && item?.isEnabled !== false))
       throw new Error(`Flow 当前模型不支持 ${seconds} 秒`);
-
-    record("composer_configured", {
-      mode,
-      aspectRatio: ratio,
-      outputs,
-      composerOutputs,
-      seconds,
-      requestedModel,
-      resolvedModel: String(resolved.id),
-    });
+    await waitFor(() =>
+      readSignal(store.mode) === mode &&
+      readSignal(store.aspectRatio) === ratio &&
+      Number(readSignal(store.ng)) === outputs &&
+      String(readSignal(store.nh)) === String(resolved.id) &&
+      Number(readSignal(store.Ra)) === seconds,
+      5500, "Flow 内部生成参数未能稳定生效", 2);
+    record("composer_configured", { mode, aspectRatio: ratio, outputs, seconds,
+      requestedModel, resolvedModel: String(resolved.id), runtime: "lview" });
     return true;
   }
 
-  function availableAssets() {
-    const box = promptBox();
-    const assets = readSignal(box?.Ig) ?? readSignal(box?.Lg);
-    return Array.isArray(assets) ? assets : [];
+  function expectedState(options, expectedAttachments) {
+    return {
+      mode: options.mode === "VIDEO_FRAMES" ? "VIDEO_FRAMES" : "VIDEO_REFERENCES",
+      aspectRatio: options.aspectRatio === "LANDSCAPE" ? "LANDSCAPE" : "PORTRAIT",
+      outputs: Math.min(4, Math.max(1, Number(options.outputs) || 1)),
+      seconds: Math.min(10, Math.max(4, Number(options.seconds) || 8)),
+      model: normalize(options.resolvedModel),
+      attachments: expectedAttachments.map((item) => ({ ...item })),
+    };
   }
 
-  function assetText(asset) {
-    for (const value of [
-      asset?.displayName,
-      asset?.fileName,
-      asset?.filename,
-      asset?.title,
-      asset?.name,
-      asset?.tb?.displayName,
-      asset?.tb?.fileName,
-    ]) {
-      const text = normalize(value);
-      if (/\.(?:jpe?g|jfif|png|webp|gif|bmp|heic|heif|avif|tiff?|svg)$/i.test(text))
-        return text;
-    }
-    return "";
+  function stateMatches(expected) {
+    const store = composer();
+    const actualAttachments = attachmentSnapshot();
+    return !!store &&
+      readSignal(store.mode) === expected.mode &&
+      readSignal(store.aspectRatio) === expected.aspectRatio &&
+      Number(readSignal(store.ng)) === expected.outputs &&
+      String(readSignal(store.nh)) === String(expected.model) &&
+      Number(readSignal(store.Ra)) === expected.seconds &&
+      !promptIsEmpty(store) &&
+      actualAttachments.length === expected.attachments.length &&
+      expected.attachments.every((item, index) =>
+        actualAttachments[index]?.id === item.id && actualAttachments[index]?.role === item.role);
   }
 
-  function assetPreview(asset) {
-    const queue = [{ value: asset, depth: 0 }];
-    const seen = new WeakSet();
-    let inspected = 0;
-    while (queue.length && inspected++ < 400) {
-      const { value, depth } = queue.shift();
-      if (typeof value === "string") {
-        const url = normalize(value);
-        if (/^(?:https?:|blob:|data:image\/)/i.test(url)) return url;
-        continue;
-      }
-      if (!value || typeof value !== "object" || seen.has(value) || depth > 5) continue;
-      seen.add(value);
-      for (const key of Object.keys(value).slice(0, 100)) {
-        let child;
-        try {
-          child = value[key];
-          if (typeof child === "function") child = child();
-        } catch {
-          continue;
-        }
-        if (typeof child === "string" || (child && typeof child === "object"))
-          queue.push({ value: child, depth: depth + 1 });
-      }
-    }
-    return "";
+  async function verifyCompleteState(expected, phase) {
+    await waitFor(
+      () => stateMatches(expected),
+      4500,
+      `${phase}完整参数、提示词或媒体顺序反读不一致；已安全停止`,
+      2,
+    );
+    record("complete_state_verified", { phase, ...expected });
   }
 
   function listAssets() {
-    return availableAssets()
-      .map((asset) => ({
-        primaryMediaKey: mediaId(asset),
-        displayName: assetText(asset),
-        previewUrl: assetPreview(asset),
-        source: "angular-composer",
-      }))
-      .filter((asset) => asset.primaryMediaKey && asset.displayName);
-  }
-
-  function findAsset(id) {
-    const wanted = normalize(id);
-    return availableAssets().find((asset) => {
-      if (mediaId(asset) === wanted) return true;
-      const candidates = [asset?.hb, asset?.id, asset?.Ea, asset?.tb?.id, asset?.tb?.Ea];
-      return candidates.some((value) => normalize(value) === wanted);
-    });
+    const assets = capture()?.listAssets?.();
+    if (!Array.isArray(assets))
+      throw new Error("Flow 内部媒体 Store 尚未就绪；不会使用 DOM 或弹层备胎");
+    return assets;
   }
 
   async function addImage(image) {
     const id = normalize(image?.imageId);
     if (!id) throw new Error(`${image?.label || "图片"}缺少真实 media ID`);
     const box = promptBox();
-    if (!box || (typeof box.yV !== "function" && typeof box.Fe !== "function"))
-      throw new Error("Flow 内部挂图接口不可用");
-    const asset = await waitFor(
-      () => findAsset(id),
-      5500,
-      `Flow 当前项目中没有读到“${image?.displayName || id}”对应的 media ID`,
-    );
-    const role = ["FIRST_FRAME", "LAST_FRAME", "REFERENCE"].includes(image?.type)
-      ? image.type
-      : "REFERENCE";
     const store = composer();
-    if (typeof box.yV === "function") {
-      box.yV(asset);
-    } else {
-      const source = asset?.rb || asset?.tb || asset;
-      const aspectRatio = Number(source?.aspectRatio || asset?.aspectRatio) || 1;
-      const ingredient = {
-        ...source,
-        id,
-        Ea: id,
-        mediaType: source?.mediaType || "IMAGE",
-        aspectRatio,
-        yd: role,
-        Dd: role === "REFERENCE" ? undefined : role,
-        Nb: new Date(),
-      };
-      const dynamicPayload =
-        store?.Ne && typeof store.Ne.set === "function" &&
-        store?.lg && typeof store.lg.set === "function";
-      box.Fe(dynamicPayload
-        ? { Sb: ingredient, source: "PLUS_BUTTON" }
-        : { Tb: ingredient, source: "PLUS_BUTTON" });
-    }
-    if (typeof box.yV === "function" && store?.ha && typeof store.ha.update === "function")
-      store.ha.update((items) =>
-        items.map((item) =>
-          mediaId(item) === id ? { ...item, Ad: role, Mb: new Date() } : item,
-        ),
-      );
+    if (typeof box?.dW !== "function" || typeof store?.Ge !== "function")
+      throw new Error("Flow 内部 Composer 挂图接口不可用；不会启用素材弹层或 DOM 兜底");
+    box.dW({ hb: id, rb: { aspectRatio: Number(image?.aspectRatio) || 1 } });
+    const expectedRole = normalize(image?.type) || "REFERENCE";
     await waitFor(
-      () => {
-        if (!attachmentIds().has(id)) return false;
-        const currentStore = composer();
-        const items = readSignal(currentStore?.Nc) ?? readSignal(currentStore?.ha);
-        const current = Array.isArray(items)
-          ? items.find((item) => mediaId(item) === id)
-          : null;
-        return !current || role === "REFERENCE" || current.yd === role || current.Ad === role || current.Dd === role;
-      },
+      () => attachmentSnapshot().some((item) => item.id === id && item.role === expectedRole),
       3500,
-      `图片“${image?.displayName || id}”未能直接挂载到 composer`,
+      `图片“${image?.displayName || id}”未以 ${expectedRole} 角色写入 Flow Composer`,
       2,
     );
     record("media_attached", {
@@ -496,6 +381,7 @@
       displayName: normalize(image?.displayName),
       type: normalize(image?.type),
       attachedCount: attachedCount(),
+      runtime: "lview",
     });
     return true;
   }
@@ -505,23 +391,10 @@
     if (!value) throw new Error("分镜提示词为空");
     const box = promptBox();
     const store = composer();
-    if (typeof box?.yk === "function") box.yk(value);
+    if (typeof store?.Hk === "function") store.Hk({ Fg: [{ content: value, type: "text" }] });
+    else if (typeof box?.yk === "function") box.yk(value);
     else if (typeof store?.yk === "function") store.yk(value);
-    else {
-      const editor = document.querySelector("flow-base-prompt-box .ProseMirror");
-      if (!(editor instanceof HTMLElement))
-        throw new Error("Flow 内部提示词接口不可用");
-      editor.focus();
-      const selection = window.getSelection();
-      const range = document.createRange();
-      range.selectNodeContents(editor);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      if (!document.execCommand("insertText", false, value)) {
-        editor.textContent = value;
-        editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-      }
-    }
+    else throw new Error("Flow 内部 Composer 提示词接口不可用；已安全停止");
     await waitFor(
       () => !promptIsEmpty(store),
       3000,
@@ -532,76 +405,119 @@
   }
 
   async function prepare(options) {
+    record("internal_store_submit_path_selected");
     if (!(await waitUntilReady())) {
       const restriction = externalRestrictionMessage();
       throw new Error(restriction || "新版 Flow 的内部 composer 暂时重建中");
     }
     const images = Array.isArray(options?.images) ? options.images : [];
+    const requestedIds = images.map((image) => normalize(image?.imageId));
+    if (requestedIds.some((id) => !id))
+      throw new Error("任务图片缺少真实 media ID；已阻止提交");
+    if (new Set(requestedIds).size !== requestedIds.length)
+      throw new Error("同一任务包含重复 media ID；已阻止提交以避免首尾帧或参考图串位");
+    await acquireComposerLock();
+    const runtime = capture()?.resolveRuntime?.();
+    if (!runtime?.component || !runtime?.store || runtime.component.Wa !== runtime.store ||
+        runtime.submitConsumesStore !== true) {
+      releaseComposerLock("runtime_owner_mismatch");
+      throw new Error("Flow 当前提交框与参数 Store 不是同一业务实例；已阻止提交");
+    }
+    activeRuntime = runtime;
+    document.documentElement.classList.add("flow-batch-composer-busy");
     record("prepare_started", {
       imageCount: images.length,
       promptLength: normalize(options?.prompt).length,
+      sameOwner: true,
+      connected: runtime.connected === true,
+      visible: runtime.visible === true,
+      registryIndex: runtime.registryIndex,
+      depth: runtime.depth,
     });
-    const expectedIds = images.map((image) => normalize(image?.imageId)).filter(Boolean);
+    const expected = images.map((image) => ({
+      id: normalize(image.imageId),
+      role: normalize(image.type) || "REFERENCE",
+    }));
+    const expectedIds = expected.map((item) => item.id);
     let lastError = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
+    try {
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
         await clearPrompt();
-        await configure(options || {});
-        for (const image of images) await addImage(image);
+        const configured = options || {};
+        const requestedModel = normalize(configured.model) || "veo_3_1_lite_low_priority";
+        const resolvedModel = resolveModel(composer(), requestedModel).id;
+        await configure(configured);
+        for (const image of images) {
+          await addImage(image);
+        }
         await setPrompt(options?.prompt);
-        await waitFor(
-          () => {
-            const ids = attachmentIds();
-            return expectedIds.every((id) => ids.has(id)) && !promptIsEmpty(composer());
-          },
-          4500,
-          "提交前 composer 指纹校验失败",
-          2,
-        );
+        activeExpected = expectedState({ ...configured, resolvedModel }, expected);
+        await verifyCompleteState(activeExpected, "第一遍");
         lastError = null;
         break;
-      } catch (error) {
-        lastError = error;
-        record("prepare_attempt_failed", {
-          attempt,
-          maxAttempts: 3,
-          message: error?.message || String(error),
-          imageIds: expectedIds,
-        });
-        if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 500));
+        } catch (error) {
+          lastError = error;
+          record("prepare_attempt_failed", {
+            attempt,
+            maxAttempts: 5,
+            message: error?.message || String(error),
+            imageIds: expectedIds,
+          });
+          if (attempt < 5)
+            await new Promise((resolve) => setTimeout(resolve, 700 + attempt * 300));
+        }
       }
+      if (lastError) throw lastError;
+      record("prepare_complete", {
+        imageIds: expectedIds,
+        attachedCount: attachedCount(),
+      });
+      return true;
+    } catch (error) {
+      releaseComposerLock("prepare_failed");
+      throw error;
+    } finally {
+      document.documentElement.classList.remove("flow-batch-composer-busy");
     }
-    if (lastError) throw lastError;
-    record("prepare_complete", {
-      imageIds: expectedIds,
-      attachedCount: attachedCount(),
-    });
-    return true;
   }
 
   async function submit() {
+    try {
     const box = promptBox();
     const store = composer();
-    if (!box || !store) throw new Error("Flow 内部 composer 不可用");
+    if (!activeRuntime || box !== activeRuntime.component || store !== activeRuntime.store ||
+        box.Wa !== store || activeRuntime.submitConsumesStore !== true)
+      throw new Error("提交前同源 Composer 绑定已失效；已安全停止");
+    if (!box || !store || typeof box.submit !== "function")
+      throw new Error("Flow 内部 Composer 提交接口不可用；已安全停止且未扣轮次");
     if (typeof store.Ia === "function" && !store.Ia()) {
       const reason = typeof store.DS === "function" ? normalize(store.DS()) : "";
       throw new Error(reason || "Flow 内部生成条件尚未满足");
     }
     if (typeof box.Xe === "function" && box.Xe())
       throw new Error("Flow 当前仍在处理上一次 composer 提交");
+    if (!activeExpected)
+      throw new Error("提交前完整参数快照不存在；已安全停止");
+    await verifyCompleteState(activeExpected, "第二遍");
     record("submit_invoked", {
       rowId: window.currentProcess?.rowId || "",
       attempt: Number(window.currentProcess?.attempt) || 0,
       attachedCount: attachedCount(),
     });
     box.submit();
+    releaseComposerLock("submitted_internal");
     return true;
+    } catch (error) {
+      releaseComposerLock("submit_failed");
+      throw error;
+    }
   }
 
   window.__flowBatchNativeBridge = Object.freeze({
     version: VERSION,
     route: "ANGULAR_DIRECT_COMPOSER",
-    operationProtection: false,
+    operationProtection: true,
     isReady,
     waitUntilReady,
     clearPrompt,
