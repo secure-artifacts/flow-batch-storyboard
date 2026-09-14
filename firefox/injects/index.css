@@ -339,7 +339,7 @@
 }
 #flow-batch-generate .fb-settings {
   display: grid !important;
-  grid-template-columns: repeat(20, minmax(0, 1fr));
+  grid-template-columns: repeat(24, minmax(0, 1fr));
   grid-template-rows: repeat(2, 32px);
   align-items: center;
   gap: 4px 8px;
@@ -371,7 +371,8 @@
   flex: 0 0 auto;
   min-width: 0;
   overflow: visible;
-  color: #64748b;
+  color: #111827;
+  font-weight: 500;
   font-size: 11px;
   text-overflow: clip;
   white-space: nowrap;
@@ -773,7 +774,7 @@
 }
 .fb-full-modal .fb-settings {
   display: grid !important;
-  grid-template-columns: repeat(20, minmax(0, 1fr));
+  grid-template-columns: repeat(24, minmax(0, 1fr));
   grid-template-rows: repeat(2, minmax(32px, auto));
   align-items: center;
   gap: 4px 8px;
@@ -805,7 +806,8 @@
   flex: 0 0 auto;
   min-width: 0;
   overflow: visible;
-  color: #64748b;
+  color: #111827;
+  font-weight: 500;
   font-size: 11px;
   text-overflow: clip;
   white-space: nowrap;
@@ -1358,23 +1360,23 @@
 }
 #flow-batch-generate .fb-folder-item,
 .fb-full-modal .fb-folder-item {
-  grid-column: 1 / 13;
+  grid-column: 1 / 18;
   grid-row: 2;
 }
 #flow-batch-generate .fb-setting-retry-toggle,
 .fb-full-modal .fb-setting-retry-toggle {
-  grid-column: 13 / 16;
+  grid-column: 18 / 22;
   grid-row: 2;
 }
 #flow-batch-generate .fb-setting-retry-rounds,
 .fb-full-modal .fb-setting-retry-rounds {
-  grid-column: 16 / 18;
+  grid-column: 22 / 25;
   grid-row: 2;
 }
 #flow-batch-generate .fb-setting-retry-wait,
 .fb-full-modal .fb-setting-retry-wait {
-  grid-column: 18 / 21;
-  grid-row: 2;
+  grid-column: 21 / 25;
+  grid-row: 1;
 }
 #flow-batch-generate .fb-setting-retry-toggle,
 #flow-batch-generate .fb-setting-retry-rounds,
@@ -1393,10 +1395,12 @@
 }
 #flow-batch-generate .fb-folder-control .ant-input,
 .fb-full-modal .fb-folder-control .ant-input {
-  flex: 0 1 520px;
+  flex: 0 1 720px;
   width: auto !important;
-  min-width: 260px;
-  max-width: 520px;
+  min-width: 320px;
+  max-width: 720px;
+  color: #1f2937 !important;
+  font-weight: 500;
 }
 #flow-batch-generate .fb-folder-control .ant-btn,
 .fb-full-modal .fb-folder-control .ant-btn {
@@ -1405,19 +1409,25 @@
 @media (min-width: 1800px) {
   #flow-batch-generate .fb-folder-item,
   .fb-full-modal .fb-folder-item {
-    grid-column: 1 / 15;
+    grid-column: 1 / 18;
   }
   #flow-batch-generate .fb-setting-retry-toggle,
   .fb-full-modal .fb-setting-retry-toggle {
-    grid-column: 15 / 17;
+    grid-column: 18 / 22;
   }
   #flow-batch-generate .fb-setting-retry-rounds,
   .fb-full-modal .fb-setting-retry-rounds {
-    grid-column: 17 / 19;
+    grid-column: 22 / 25;
   }
   #flow-batch-generate .fb-setting-retry-wait,
   .fb-full-modal .fb-setting-retry-wait {
+    grid-column: 21 / 25;
+    grid-row: 1;
+  }
+  #flow-batch-generate .fb-setting-download,
+  .fb-full-modal .fb-setting-download {
     grid-column: 19 / 21;
+    grid-row: 1;
   }
   #flow-batch-generate .fb-setting-retry-toggle,
   #flow-batch-generate .fb-setting-retry-rounds,
@@ -1431,6 +1441,7 @@
 @media (max-width: 1799px) {
   #flow-batch-generate .fb-settings,
   .fb-full-modal .fb-settings {
+    grid-template-columns: repeat(20, minmax(0, 1fr));
     grid-template-rows: repeat(3, minmax(32px, auto));
   }
   #flow-batch-generate .fb-setting-interval,
@@ -1445,22 +1456,22 @@
   }
   #flow-batch-generate .fb-setting-model,
   .fb-full-modal .fb-setting-model {
-    grid-column: 7 / 13;
+    grid-column: 7 / 12;
     grid-row: 1;
   }
   #flow-batch-generate .fb-setting-concurrency,
   .fb-full-modal .fb-setting-concurrency {
-    grid-column: 13 / 15;
+    grid-column: 12 / 14;
     grid-row: 1;
   }
   #flow-batch-generate .fb-setting-ratio,
   .fb-full-modal .fb-setting-ratio {
-    grid-column: 15 / 18;
+    grid-column: 14 / 17;
     grid-row: 1;
   }
   #flow-batch-generate .fb-setting-download,
   .fb-full-modal .fb-setting-download {
-    grid-column: 18 / 21;
+    grid-column: 17 / 19;
     grid-row: 1;
   }
   #flow-batch-generate .fb-folder-item,
@@ -1475,24 +1486,24 @@
   }
   #flow-batch-generate .fb-setting-retry-toggle,
   .fb-full-modal .fb-setting-retry-toggle {
-    grid-column: 7 / 12;
+    grid-column: 12 / 17;
     grid-row: 3;
   }
   #flow-batch-generate .fb-setting-retry-rounds,
   .fb-full-modal .fb-setting-retry-rounds {
-    grid-column: 12 / 16;
+    grid-column: 17 / 21;
     grid-row: 3;
   }
   #flow-batch-generate .fb-setting-retry-wait,
   .fb-full-modal .fb-setting-retry-wait {
-    grid-column: 16 / 21;
-    grid-row: 3;
+    grid-column: 19 / 21;
+    grid-row: 1;
   }
   #flow-batch-generate .fb-folder-control .ant-input,
   .fb-full-modal .fb-folder-control .ant-input {
-    flex-basis: 440px;
-    min-width: 180px;
-    max-width: 440px;
+    flex-basis: auto;
+    min-width: 260px;
+    max-width: none;
   }
   #flow-batch-generate .fb-folder-preview,
   .fb-full-modal .fb-folder-preview {
@@ -1516,17 +1527,17 @@
   }
   #flow-batch-generate .fb-setting-concurrency,
   .fb-full-modal .fb-setting-concurrency {
-    grid-column: 9 / 13;
+    grid-column: 9 / 12;
     grid-row: 1;
   }
   #flow-batch-generate .fb-setting-ratio,
   .fb-full-modal .fb-setting-ratio {
-    grid-column: 13 / 17;
+    grid-column: 12 / 15;
     grid-row: 1;
   }
   #flow-batch-generate .fb-setting-download,
   .fb-full-modal .fb-setting-download {
-    grid-column: 17 / 21;
+    grid-column: 15 / 17;
     grid-row: 1;
   }
   #flow-batch-generate .fb-setting-model,
@@ -1556,8 +1567,8 @@
   }
   #flow-batch-generate .fb-setting-retry-wait,
   .fb-full-modal .fb-setting-retry-wait {
-    grid-column: 14 / 21;
-    grid-row: 4;
+    grid-column: 17 / 21;
+    grid-row: 1;
   }
 }
 
