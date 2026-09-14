@@ -3188,8 +3188,9 @@
           downloadFolder: "",
           autoRetry: !0,
           retryRounds: 3,
-          retryRoundWait: 30,
+          retryRoundWait: 10,
           retryDefaultsV237: !1,
+          forcedDownloadDefaultsV301: !1,
           download: !0,
         },
         D9 = {
@@ -3219,8 +3220,9 @@
           downloadFolder: "",
           autoRetry: !0,
           retryRounds: 3,
-          retryRoundWait: 30,
+          retryRoundWait: 10,
           retryDefaultsV237: !0,
+          forcedDownloadDefaultsV301: !0,
           download: !0,
         };
       }
@@ -4057,35 +4059,19 @@
         );
       }
       function tH() {
-        let t = [];
-        try {
-          const e =
-            typeof window.require == "function"
-              ? window.require("workflows")?.getState?.()?.workflows
-              : null;
-          t = fbCollectionValues(e);
-        } catch {}
-        try {
-          const e = window.__flowBatchNativeBridge?.listAssets?.();
-          Array.isArray(e) && e.length && (t = [...t, ...e]);
-        } catch {}
-        const e = fbUniqueImages(t),
-          n = fbUniqueImages(fbDomImages(e)),
-          o = location.href.match(/\/collection\/([^/?#]+)/)?.[1];
-        if (o) {
-          const i = e.filter(
-            (s) => String(s.collectionId || "").replace("fe_id_", "") === o,
-          );
-          if (i.length) return fbUniqueImages([...n, ...i]);
-        }
-        if (n.length) return fbUniqueImages([...e, ...n]);
-        return e;
+        const t = window.__flowBatchNativeBridge?.listAssets?.();
+        if (!Array.isArray(t))
+          throw new Error("Flow 内部媒体 Store 尚未就绪；不会使用 DOM、缓存或素材弹层备胎");
+        return fbUniqueImages(t);
       }
       async function fbWaitForImages() {
-        for (let t = 0; t < 6; t++) {
+        // Flow hydrates its internal media Store after the collection UI appears.
+        // Stay on the Store channel and wait for that authoritative state instead
+        // of declaring every row missing during the initial hydration window.
+        for (let t = 0; t < 30; t++) {
           const e = tH();
           if (e.length) return e;
-          t < 5 && (await Zc(1));
+          t < 29 && (await Zc(0.5));
         }
         return [];
       }
@@ -30584,12 +30570,13 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
         )}`;
         return e ? `${i}&fb_preview_retry=${e}` : i;
       }
-      const FB_READY_IMAGE_CACHE = new Map();
+      const FB_READY_IMAGE_CACHE = new Map(),
+        FB_DURABLE_ASSET_CATALOG = new Map();
       function fbProbeImageMediaKey(t, e = 8e3, n = "") {
         const o = fbCanonicalMediaKey(t);
         if (!o) return Promise.resolve(!1);
         const i = FB_READY_IMAGE_CACHE.get(o);
-        if (i && Date.now() - i < 30 * 60 * 1e3) return Promise.resolve(!0);
+        if (i) return Promise.resolve(!0);
         return new Promise((s) => {
           let r = !1,
             a;
@@ -31298,7 +31285,7 @@ ${V}`;
         async function g(m) {
           if (!m) return;
           const C = u7(),
-            { download: v } = zd(),
+            v = !0,
             k = Object.entries(m);
           for (const [P, O] of k) {
             if (!Array.isArray(O) || !O.length || !C[P]) continue;
@@ -31655,6 +31642,8 @@ ${V}`;
           : "IMAGE_TO_VIDEO";
       }
       function fbMaxInFlight(t = zd().maxInFlight) {
+        // This limits background generations. Composer submission itself is
+        // serialized by fbWithSubmitLock until the UUID receipt is bound.
         return Math.min(12, Math.max(1, Number(t) || 4));
       }
       function fbVideoType(t) {
@@ -32519,6 +32508,19 @@ ${V}`;
             Number(o.successfulOutputs) || 0,
             Array.isArray(o.results) ? o.results.length : 0,
           ),
+          planSuccessCount = plan
+            ? Math.min(
+                plan.target,
+                Math.max(
+                  plan.success,
+                  Number(o.totalSuccessfulOutputs) || 0,
+                  Array.isArray(o.allResults) ? o.allResults.length : 0,
+                  successCount,
+                  Array.isArray(o.downloadedFiles) ? o.downloadedFiles.length : 0,
+                  Array.isArray(o.allDownloadedFiles) ? o.allDownloadedFiles.length : 0,
+                ),
+              )
+            : 0,
           failedCount = Math.max(
             Number(o.failedOutputs) || 0,
             Array.isArray(o.failedGenerationIds)
@@ -32526,7 +32528,7 @@ ${V}`;
               : 0,
           ),
           progress = plan
-            ? ` · 已得${plan.success}/${plan.target}个`
+            ? ` · 已得${planSuccessCount}/${plan.target}个`
             : expected > 1 &&
             [
               "generating",
@@ -33247,7 +33249,14 @@ ${V}`;
           };
         }, []);
         function u(N) {
-          (h7(($) => ({ ...$, ...N })), d());
+          const patch = { ...N };
+          if (
+            Object.prototype.hasOwnProperty.call(patch, "videoModel") &&
+            patch.videoModel !== "veo_3_1_lite_low_priority"
+          )
+            patch.generationRounds = 1;
+          const saving = h7(($) => ({ ...$, ...patch }));
+          (Promise.resolve(saving).then(() => _v.save.flush?.()), d());
         }
         function fbRowsWithMaterialMode(N) {
           const $ = Array.isArray(N) ? N : [],
@@ -33848,15 +33857,10 @@ ${V}`;
             planRound = Math.max(1, Number(N.planRound) || 1),
             baseFileName =
               ZA(N.manualRetryFileBase || N.clipName) || `分镜-${$ + 1}`,
-            planSuffix =
-              fbHasGenerationPlan(N) &&
-              !N.manualRetryFileBase &&
-              (planProgress.rounds > 1 || planPhase === "repair")
-                ? planPhase === "repair"
-                  ? `-补跑${planRound}`
-                  : `-第${planRound}轮`
-                : "",
-            ie = `${baseFileName}${planSuffix}`,
+            // 同一片段的多轮结果始终使用同一原始文件名。
+            // Chrome 会用 (1)、(2)…自动解决重名，不再把轮次写进业务文件名。
+            ie = baseFileName,
+            configuredOutputs = fbConfiguredOutputsPerRound(zd()),
             expectedOutputs = Math.min(
               4,
               Math.max(
@@ -33876,11 +33880,20 @@ ${V}`;
               attempt: ne,
               fileBase: ie,
               bindingKey,
-              downloadFolder: N.manualRetryFolder || jse(f(), N.clipName),
+              downloadFolder: N.manualRetryFolder || fbRowDownloadFolder(f(), N),
               expectedOutputs,
               forceAutoDownload: !!N.forceAutoDownload,
               submittedAt: Date.now(),
             };
+          if (
+            planPhase === "base" &&
+            Number(planProgress.outputsPerRound) !== Number(configuredOutputs)
+          )
+            return fbStopForConfigurationIssue(
+              N,
+              $,
+              `本行保存的计划是每轮 ${planProgress.outputsPerRound} 个，但面板当前设置为每轮 ${configuredOutputs} 个；已阻止按旧计划提交。请重新开始本批次以同步计划`,
+            );
           let submitInvoked = !1;
           m(
             N.id,
@@ -33961,8 +33974,12 @@ ${V}`;
                 (c.current.delete(se),
                   fbMarkVerifying(
                     re,
-                    "提交后暂未读到任务编号；插件正在等待 Flow 返回结果，等待完成前不会重复生成",
+                    "提交后暂未读到任务编号；已安全停止后续提交，避免回执串行",
                   ),
+                  (a.current = !1),
+                  fbReleaseInternalWaits(),
+                  s(!1),
+                  fbSetKeepAwake(!1),
                   ae(!1));
               };
               le = setTimeout(checkTimeout, 1e3);
@@ -33974,7 +33991,15 @@ ${V}`;
                 usingNativeFlow
                   ? window.__flowBatchNativeBridge.submit()
                   : window.generateVideo(),
-              ).catch((ce) => {
+              ).then((ce) => {
+                // Clicking Generate is not a receipt. Keep this row as the
+                // immutable owner until Flow returns its generation UUID.
+                if (ce === !1 && c.current.has(se)) {
+                  clearTimeout(le);
+                  c.current.delete(se);
+                  rejectSubmit(new Error("Flow 未接受本次提交"));
+                }
+              }).catch((ce) => {
                 (clearTimeout(le), c.current.delete(se), rejectSubmit(ce));
               });
             });
@@ -34057,7 +34082,19 @@ ${V}`;
             const row = rows[index];
             if (!["submitting", "generating", "verifying"].includes(row.status)) continue;
             if (!(Number(row.submittedAt || row.verifyingAt || row.verificationStartedAt || row.generatedAt) > 0)) {
-              m(row.id, {verificationStartedAt: Date.now()}, index);
+              // A restored in-flight row without its original timestamp must
+              // not receive a fresh five-minute window on every page reload.
+              // Its receipt is genuinely unknown: release capacity while
+              // retaining the binding so a late Flow result can still settle.
+              m(row.id, {
+                status: "submission_unknown",
+                message: "刷新前的提交时间不可恢复；已暂停本行并释放在途位，其他行可继续",
+                verificationTimedOutAt: Date.now(),
+              }, index);
+              window.__flowBatchRunLogger?.record?.("submission_receipt_timestamp_missing", {
+                rowId: row.id, attempt: row.attempt,
+              });
+              changed++;
               continue;
             }
             if (!fbRowPastHardGenerationDeadline(row)) continue;
@@ -34117,7 +34154,7 @@ ${V}`;
                 bindingKey: oe.row.downloadBindingKey,
                 expectedOutputs: ie,
                 downloadFolder:
-                  oe.row.downloadFolder || jse(f(), oe.row.clipName),
+                  oe.row.downloadFolder || fbRowDownloadFolder(f(), oe.row),
               },
               ce = le
                 ? `${$}等待已达到上限；已识别成功 ${re} 个、明确失败 ${ae} 个，另有 ${le} 个正在等待 Flow 结果。等待完成前不会重复生成`
@@ -34234,10 +34271,26 @@ ${V}`;
           let ee = !1;
           for (let ne = 0; ne < N.length; ne++) {
             const oe = N[ne];
+            const configuredRounds = fbGenerationRounds($.generationRounds),
+              configuredOutputs = fbConfiguredOutputsPerRound($),
+              planIsUntouched =
+                fbHasGenerationPlan(oe) &&
+                Math.max(0, Number(oe.baseRoundsCompleted) || 0) === 0 &&
+                Math.max(0, Number(oe.repairRoundsCompleted) || 0) === 0 &&
+                Math.max(0, Number(oe.totalSuccessfulOutputs) || 0) === 0 &&
+                Math.max(0, Number(oe.totalFailedOutputs) || 0) === 0 &&
+                !(Array.isArray(oe.generationIds) && oe.generationIds.length) &&
+                !(Array.isArray(oe.results) && oe.results.length) &&
+                !["submitting", "generating", "verifying", "downloading"].includes(oe.status),
+              untouchedPlanDrifted =
+                planIsUntouched &&
+                (Number(oe.planRounds) !== configuredRounds ||
+                  Number(oe.planOutputsPerRound) !== configuredOutputs ||
+                  Number(oe.targetSuccessfulOutputs) !== configuredRounds * configuredOutputs);
             if (
               (fbManualScope.current && oe.id !== fbManualScope.current) ||
               !fbHasContent(oe) ||
-              fbHasGenerationPlan(oe) ||
+              (fbHasGenerationPlan(oe) && !untouchedPlanDrifted) ||
               oe.status === "verifying" ||
               (fbIsCompleted(oe) && !fbHasGenerationPlan(oe))
             )
@@ -34256,7 +34309,9 @@ ${V}`;
                 status: ie,
                 message:
                   ie === "pending"
-                    ? `等待按每行 ${fbGenerationRounds($.generationRounds)} 轮生成`
+                    ? untouchedPlanDrifted
+                      ? `已同步当前设置：每行 ${configuredRounds} 轮、每轮 ${configuredOutputs} 个`
+                      : `等待按每行 ${configuredRounds} 轮生成`
                     : oe.message,
               },
               ne,
@@ -34307,6 +34362,12 @@ ${V}`;
                   ee.index - ne.index,
             );
         }
+        function fbDownloadLockKey(N = {}) {
+          const bindingKey = N.bindingKey || N.downloadBindingKey;
+          if (bindingKey) return String(bindingKey);
+          const rowId = N.rowId || N.id || "unknown-row";
+          return `${rowId}:${Math.max(0, Number(N.attempt) || 0)}`;
+        }
         function fbRecordPlannedAttempt(N, $, ee, ne, oe, ie) {
           const re = C(N, $);
           if (!re) return null;
@@ -34314,7 +34375,9 @@ ${V}`;
             le = fbGenerationPlanProgress(ae, zd());
           // Only terminal evidence can settle this exact attempt. A pending or
           // generating row is not a failed output, even if its result list is empty.
-          if (!['success','partial_success','failed','download_failed','ready'].includes(ae.status)) return ae;
+          // Generation settlement is complete before the independent download starts.
+          // Downloading must therefore be allowed to commit this exact planned round.
+          if (!['success','partial_success','failed','download_failed','ready','downloading'].includes(ae.status)) return ae;
           if (ae.planPhase && (ae.planPhase !== ee || Number(ae.planRound) !== Number(ne))) return ae;
           const ledgerKey = ee + ":" + ne,
             ledger = {...(ae.roundLedger || {})},
@@ -34455,14 +34518,22 @@ ${V}`;
             try {
               accepted = await O(se.row, se.index);
             } finally {
-              // Failed submissions must obey the same pacing as accepted ones.
-              const settings = zd(), seconds = fbSignedRandomSeconds(settings.interval, settings.intervalRandom, 1);
+              if (window.currentProcess?.bindingKey === se.row.downloadBindingKey)
+                window.currentProcess = null;
+              // The interval limits real Flow submissions. A fail-closed local
+              // validation does not call Flow and must not masquerade as a
+              // 30-second scheduler stall.
+              const settings = zd(), seconds = accepted
+                ? fbManualScope.current
+                  ? 1
+                  : fbSignedRandomSeconds(settings.interval, settings.intervalRandom, 1)
+                : 0;
               window.__flowBatchRunLogger?.record?.("submit_pacing", {
                 rowId: se.row.id, attempt: C(se.row.id,se.index)?.row?.attempt,
                 interval: settings.interval, intervalRandom: settings.intervalRandom,
                 plannedWaitSeconds: seconds, accepted: !!accepted, stopped: !a.current,
               });
-              await fbGentleWait(seconds);
+              if (accepted) await fbGentleWait(seconds);
             }
             return !!accepted && a.current;
           });
@@ -34643,8 +34714,8 @@ ${V}`;
                   Number(nextBaseDone) > Number(oe)
                 ) {
                   const roundWaitSeconds = Math.max(
-                    0,
-                    Number(zd().retryRoundWait) || 0,
+                    1,
+                    Number(zd().retryRoundWait) || 10,
                   );
                   window.__flowBatchRunLogger?.record?.(
                     "normal_round_wait_started",
@@ -34671,7 +34742,7 @@ ${V}`;
               }
               const unsettledSubmittedRows = f().filter((row) =>
                 (!fbManualScope.current || row.id === fbManualScope.current) &&
-                ["submitting", "generating", "verifying"].includes(row.status),
+                ["submitting", "generating", "verifying", "downloading"].includes(row.status),
               );
               if (unsettledSubmittedRows.length) {
                 fbSchedulerPulse("waiting_for_submitted_rows", {
@@ -34689,11 +34760,7 @@ ${V}`;
                 se = ae.some(({ row: le }) =>
                   fbLooksRateLimited(le.message),
                 ),
-                ce = Math.max(
-                  se ? 900 : 60,
-                  Math.max(30, Number(zd().retryRoundWait) || 30) *
-                    Math.pow(2, ie),
-                ),
+                ce = Math.max(1, Number(zd().retryRoundWait) || 10),
                 de = Date.now() + ce * 1e3;
               for (const { row: le, index: fe } of ae)
                 m(
@@ -34841,7 +34908,7 @@ ${V}`;
                 verifyingAt: Date.now(),
               };
               ne = !0;
-            } else if (ie.status === "downloading" && !p.current.has(ie.id)) {
+            } else if (ie.status === "downloading" && !p.current.has(fbDownloadLockKey(ie))) {
               const results = Array.isArray(ie.results) ? ie.results : [];
               N[oe] = results.length
                 ? {
@@ -35072,22 +35139,22 @@ ${V}`;
               4,
               Math.max(1, Number(oe.outputsPerPrompt) || 1),
             ),
-            generationRounds: fbGenerationRounds(oe.generationRounds),
+            generationRounds:
+              oe.videoModel !== "veo_3_1_lite_low_priority"
+                ? 1
+                : fbGenerationRounds(oe.generationRounds),
             retryRounds: Math.min(
               3,
               Math.max(0, Number(oe.retryRounds) || 0),
             ),
-            retryRoundWait: Math.max(
-              30,
-              Number(oe.retryRoundWait) || 30,
-            ),
+            retryRoundWait: Math.max(1, Number(oe.retryRoundWait) || 10),
             videoModel: O9[oe.videoModel]
               ? oe.videoModel
               : "veo_3_1_lite_low_priority",
             aspectRatio:
               oe.aspectRatio === "LANDSCAPE" ? "LANDSCAPE" : "PORTRAIT",
             autoRetry: oe.autoRetry !== !1,
-            download: oe.download !== !1,
+            download: !0,
           };
         }
         let fbUnifiedSavePromise = null;
@@ -35106,7 +35173,7 @@ ${V}`;
               oe = {
                 format: FB_CHECKPOINT_FORMAT,
                 schemaVersion: FB_CHECKPOINT_SCHEMA_VERSION,
-                pluginVersion: "3.0",
+              pluginVersion: "3.0.30",
                 recordType: "checkpoint-and-run-log",
                 saveReason: reason,
                 checkpointId: fbNewId(),
@@ -35215,6 +35282,9 @@ ${V}`;
               Promise.resolve(d7.save.flush?.()),
             ]);
             await fbEnsureGridDataVisible(re);
+            // 断点只保留精确文件名，不携带旧集合的媒体 ID。
+            // 恢复后立即用当前集合的内部媒体 Store 重新精确绑定。
+            await J(["image", "endImage"]);
             setTimeout(() => {
               (h()?.refreshDimensions(), h()?.render());
             }, 80);
@@ -35262,7 +35332,7 @@ ${V}`;
           });
         }
         function fbChooseCheckpointFile() {
-          if (a.current || l.current)
+          if (a.current)
             return Ve.message.warning(
               "请先点击“停止继续提交”，再上传并恢复断点文件",
             );
@@ -35319,9 +35389,19 @@ ${V}`;
           if (!$.retryDefaultsV237) {
             ee.retryDefaultsV237 = !0;
           }
+          if (!$.forcedDownloadDefaultsV301) {
+            ee.forcedDownloadDefaultsV301 = !0;
+            ee.download = !0;
+            ee.retryRoundWait = 10;
+          }
           if (!$.multiRoundDefaultsV242) {
             ee.multiRoundDefaultsV242 = !0;
           }
+          if (
+            $.videoModel !== "veo_3_1_lite_low_priority" &&
+            fbGenerationRounds($.generationRounds) !== 1
+          )
+            ee.generationRounds = 1;
           if (!$.quantityDefaultsV12613) {
             ee.quantityDefaultsV12613 = true;
           }
@@ -35419,6 +35499,10 @@ ${V}`;
                   ue.duplicateResolved && re.add(de));
               }
               const { image: fe } = ue;
+              if (ue.duplicateResolved) {
+                (re.add(de), oe++, (le = { ...le, [field]: null }));
+                continue;
+              }
               if (fe) {
                 (le = {
                   ...le,
@@ -35481,7 +35565,7 @@ ${V}`;
             ae = [
             `匹配成功 ${ne} 张`,
             oe ? `未找到 ${oe} 张` : "",
-            re.size ? `已自动合并 ${re.size} 个重复名称` : "",
+            re.size ? `有 ${re.size} 个重复名称，已拒绝自动选择` : "",
           ]
             .filter(Boolean)
             .join("，");
@@ -35624,7 +35708,7 @@ ${V}`;
               4,
               Math.max(1, Number(N.expectedOutputs) || 1),
             ),
-            downloadFolder: N.downloadFolder || jse(f(), N.clipName),
+            downloadFolder: N.downloadFolder || fbRowDownloadFolder(f(), N),
             submittedAt:
               Number(N.submittedAt || N.verifyingAt || N.verificationStartedAt || N.generatedAt) || Date.now(),
           };
@@ -35642,6 +35726,8 @@ ${V}`;
           const existingProcess = ne >= 0 ? ee[ne] : null,
             process = {
             ...N,
+            _verificationRegisteredAt:
+              Number(existingProcess?._verificationRegisteredAt) || Date.now(),
             _verificationIgnoredIds: Array.isArray(N._verificationIgnoredIds)
               ? N._verificationIgnoredIds
               : Array.isArray(existingProcess?._verificationIgnoredIds)
@@ -35903,7 +35989,8 @@ ${V}`;
           if (!N || K(N) || !fbBindingIsCurrent(N)) return !1;
           const ie = C(N.rowId, N.rowIndex)?.row;
           if (!ie) return !1;
-          if (p.current.has(N.rowId) || fbIsCompleted(ie)) return !0;
+          // A download from an earlier attempt must never suppress generation results.
+          if (fbIsCompleted(ie)) return !0;
           const re = Math.min(
               4,
               Math.max(
@@ -35962,7 +36049,7 @@ ${V}`;
             },
             N.rowIndex,
           );
-          if (!pe || p.current.has(N.rowId)) return pe;
+          if (!pe) return pe;
           if (!de) {
             (fbClearAttemptRecords(N),
               m(
@@ -35981,8 +36068,9 @@ ${V}`;
               T());
             return !1;
           }
-          const we = !!N.forceAutoDownload || !!zd().download;
-          (p.current.add(N.rowId),
+          const we = !0,
+            downloadLockKey = fbDownloadLockKey(N);
+          (p.current.add(downloadLockKey),
             fbClearAttemptRecords(N),
             m(
               N.rowId,
@@ -36000,22 +36088,26 @@ ${V}`;
               },
               N.rowIndex,
             ));
-          try {
-            if (we)
-              await M(N, ae, {
-                expectedOutputs: re,
-                failedOutputs: fe,
+          if (we) {
+            fbRecordSettledProcessAttempt(N);
+            a.current && !l.current && R();
+            void M(N, ae, {
+              expectedOutputs: re,
+              failedOutputs: fe,
+            })
+              .catch((downloadError) => {
+                console.error("独立下载任务失败：", downloadError);
+              })
+              .finally(() => {
+                p.current.delete(downloadLockKey);
+                T();
               });
-            else
-              Ve.message.success(
-                `${N.fileBase} 生成成功 ${de} 个、失败 ${fe} 个；成功结果可手动下载`,
-              );
-          } finally {
-            p.current.delete(N.rowId);
+          } else {
+            p.current.delete(downloadLockKey);
+            Ve.message.success(
+              `${N.fileBase} 生成成功 ${de} 个、失败 ${fe} 个；成功结果可手动下载`,
+            );
           }
-          we &&
-            (fbRecordSettledProcessAttempt(N),
-            a.current && !l.current && R());
           return !0;
         }
         async function G(N) {
@@ -36095,7 +36187,7 @@ ${V}`;
         async function M(N, $, options = {}) {
           const ee = [],
             downloadErrors = [],
-            ne = N.downloadFolder || jse(f(), N.clipName),
+            ne = N.downloadFolder || fbRowDownloadFolder(f(), N),
             oe = ZA(N.fileBase || N.clipName) || `分镜-${N.rowIndex + 1}`,
             ie = Math.min(
               4,
@@ -36343,18 +36435,19 @@ ${V}`;
               ee.row.downloadFileBase ||
               ZA(ee.row.clipName) ||
               `分镜-${ee.index + 1}`,
-            downloadFolder: ee.row.downloadFolder || jse(f(), ee.row.clipName),
+            downloadFolder:
+              ee.row.downloadFolder || fbRowDownloadFolder(f(), ee.row),
             bindingKey: ee.row.downloadBindingKey,
           };
-          p.current.add(ee.row.id);
+          const downloadLockKey = fbDownloadLockKey(ne);
+          p.current.add(downloadLockKey);
           try {
             await M(ne, ee.row.results);
           } finally {
-            (p.current.delete(ee.row.id), T());
+            (p.current.delete(downloadLockKey), T());
           }
         }
         async function fbResumeInterruptedDownloads() {
-          if (zd().download === !1) return;
           const N = f()
             .map(($, ee) => ({ row: $, index: ee }))
             .filter(
@@ -36362,11 +36455,12 @@ ${V}`;
                 ["ready", "download_failed"].includes($.status) &&
                 Array.isArray($.results) &&
                 $.results.length &&
-                !p.current.has($.id),
+                !p.current.has(fbDownloadLockKey($)),
             );
           for (const { row: $, index: ee } of N) {
             const ne = fbProcessFromRow($, ee);
-            p.current.add($.id);
+            const downloadLockKey = fbDownloadLockKey(ne);
+            p.current.add(downloadLockKey);
             try {
               await M(ne, $.results, {
                 expectedOutputs: $.expectedOutputs,
@@ -36374,7 +36468,7 @@ ${V}`;
               });
               fbRecordSettledProcessAttempt(ne);
             } finally {
-              p.current.delete($.id);
+              p.current.delete(downloadLockKey);
             }
           }
           T();
@@ -36383,7 +36477,6 @@ ${V}`;
           const ee = C(N, $);
           if (!ee) return;
           if (a.current || l.current) return Ve.message.info("请先停止批量提交，再单独重生本行");
-          if (ee.row.status === "submission_unknown" && !window.confirm("本行提交结果尚未确认，重新生成可能产生重复视频。确认已核对Flow记录并仍要重生？")) return;
           fbManualScope.current = ee.row.id;
           if (ee.row.status === "verifying")
             return Ve.message.info(
@@ -36391,7 +36484,7 @@ ${V}`;
             );
           const ne = Number(ee.row.attempt) || 0,
             oe = ZA(ee.row.clipName) || `分镜-${ee.index + 1}`,
-            ie = jse(f(), ee.row.clipName);
+            ie = fbRowDownloadFolder(f(), ee.row);
           KA((re) => {
             const ae = { ...re };
             for (const [le, se] of Object.entries(ae))
@@ -36517,7 +36610,7 @@ ${V}`;
                     max: 10,
                     step: 1,
                     value: fbGenerationRounds(zd().generationRounds),
-                    disabled: i || L > 0,
+                     disabled: i,
                     onFocus: (N) => N.target.select(),
                     onChange: (N) =>
                       u({ generationRounds: fbGenerationRounds(N) }),
@@ -36533,8 +36626,8 @@ ${V}`;
                     type: "primary",
                     size: "small",
                     className: "fb-primary-action fb-load-images-action",
-                    disabled:
-                      fbCurrentGenerationType === "TEXT_TO_VIDEO" || i || L > 0,
+                     disabled:
+                       fbCurrentGenerationType === "TEXT_TO_VIDEO" || i,
                     title:
                       fbCurrentGenerationType === "TEXT_TO_VIDEO"
                         ? "文生视频不需要加载图片"
@@ -36545,8 +36638,8 @@ ${V}`;
                   Z.jsx(Ve.Button, {
                     size: "small",
                     className: `fb-material-mode-toggle${fbMaterialModeActive ? " is-active" : ""}`,
-                    disabled:
-                      fbCurrentGenerationType === "TEXT_TO_VIDEO" || i || L > 0,
+                     disabled:
+                       fbCurrentGenerationType === "TEXT_TO_VIDEO" || i,
                     title: fbMaterialModeActive
                       ? "已开启：之后提取、粘贴或填写的分镜都会自动使用素材模式；再次点击可关闭"
                       : "可在提取前先开启；之后提取、粘贴或填写的分镜都会自动使用素材模式",
@@ -36559,7 +36652,7 @@ ${V}`;
                   Z.jsx(Ve.Segmented, {
                     className: "fb-generation-type",
                     value: fbCurrentGenerationType,
-                    disabled: i || L > 0,
+                     disabled: i,
                     title:
                       "图生/文生可一键批量设置；图文混生时在每行“生成方式”中独立选择",
                     onChange: fbChangeGenerationType,
@@ -36678,7 +36771,13 @@ ${V}`;
                   children: Z.jsx("select", {
                     className: "fb-native-select",
                     value: zd().videoModel || "veo_3_1_lite_low_priority",
-                    onChange: (N) => u({ videoModel: N.target.value }),
+                     onChange: (N) => {
+                       const model = N.target.value,
+                         patch = { videoModel: model };
+                       if (model !== "veo_3_1_lite_low_priority")
+                         patch.generationRounds = 1;
+                       u(patch);
+                     },
                     children: Object.entries(O9).map(([N, $]) =>
                       Z.jsx("option", { value: N, children: $ }, N),
                     ),
@@ -36692,8 +36791,8 @@ ${V}`;
                     min: 1,
                     max: 12,
                     step: 1,
-                    disabled: i || L > 0,
-                    title: "允许同时在途的分镜数量（1–12，默认4）",
+                     disabled: i,
+                    title: "后台生成在途数量；Composer 提交始终单通道并等待 UUID",
                     style: { width: 62 },
                   }),
                 }),
@@ -36713,7 +36812,7 @@ ${V}`;
                   label: "每行每轮生成数量",
                   className: "fb-setting-outputs",
                   children: Z.jsx(Ve.Segmented, {
-                    disabled: i || L > 0,
+                     disabled: i,
                     title: "每行每轮提交生成几个视频；总目标＝轮数×此数量",
                     options: [1, 2, 3, 4].map((N) => ({
                       label: `${N}个`,
@@ -36721,19 +36820,27 @@ ${V}`;
                     })),
                   }),
                 }),
-                Z.jsx(Ve.Form.Item, {
-                  label: "下载文件夹（默认下载目录内）",
+                 Z.jsx(Ve.Form.Item, {
+                   label: "下载文件夹（默认下载目录内）",
                   className: "fb-folder-item",
                   children: Z.jsxs("div", {
                     className: "fb-folder-control",
                     children: [
-                      Z.jsx(Ve.Input, {
-                        value: zd().downloadFolder || jse(I).replace(/\/$/, ""),
-                        title: jse(I).replace(/\/$/, ""),
-                        onFocus: (N) => N.target.select(),
-                        onChange: (N) => u({ downloadFolder: N.target.value }),
-                        placeholder: "留空时按集合名和分镜汉字前缀自动创建",
-                        style: { width: 430 },
+                       Z.jsx(Ve.Input, {
+                         value:
+                           zd().downloadFolder ||
+                           fbRowDownloadFolder(
+                             I,
+                             I.find((N) => fbShouldStoreRow(N)) || {},
+                           ).replace(/\/$/, ""),
+                         title: fbRowDownloadFolder(
+                           I,
+                           I.find((N) => fbShouldStoreRow(N)) || {},
+                         ).replace(/\/$/, ""),
+                         onFocus: (N) => N.target.select(),
+                         onChange: (N) => u({ downloadFolder: N.target.value }),
+                         placeholder: "自动生成四级目录",
+                         style: { width: 430 },
                       }),
                       Z.jsx(Ve.Button, {
                         onClick: () => {
@@ -36744,12 +36851,7 @@ ${V}`;
                       }),
                       Z.jsxs("span", {
                         className: "fb-folder-preview",
-                        children: [
-                          "实际：",
-                          jse(I).replace(/\/$/, ""),
-                          " · 本机时区：",
-                          fbLocalTimeZone(),
-                        ],
+                        children: ["本机时区：", fbLocalTimeZone()],
                       }),
                     ],
                   }),
@@ -36777,9 +36879,9 @@ ${V}`;
                   label: "轮间等待（秒）",
                   className: "fb-setting-retry-wait",
                   children: Z.jsx(Ve.InputNumber, {
-                    min: 30,
+                    min: 1,
                     max: 3600,
-                    step: 15,
+                    step: 1,
                     style: { width: 82 },
                   }),
                 }),
@@ -36789,8 +36891,9 @@ ${V}`;
                   className: "fb-setting-download",
                   valuePropName: "checked",
                   children: Z.jsx(Ve.Checkbox, {
-                    title:
-                      "关闭后必须手动下载当前行，插件才会继续提交下一条分镜",
+                    checked: !0,
+                    disabled: !0,
+                    title: "自动下载为必选项，生成完成后由插件自动下载并结算",
                   }),
                 }),
               ],
@@ -36853,6 +36956,35 @@ ${V}`;
         }
         return "";
       }
+      function fbRecentProjectFolder(t, e, n = Date.now()) {
+        let o = "",
+          i = 0;
+        for (const [s, r] of Object.entries(t || {})) {
+          const parts = String(s).split("|"),
+            identity = parts[1] || "",
+            label = parts.slice(2).join("|") || "";
+          if (identity !== e && label !== e) continue;
+          const updatedAt = Number(r?.updatedAt) || 0;
+          // 凌晨跨日不应把连续处理的同一项目拆成两个目录。
+          if (n - updatedAt > 24 * 60 * 60 * 1e3 || updatedAt <= i) continue;
+          const folder = String(r?.folder || "");
+          if (!folder) continue;
+          ((o = fbFolderPath(folder)), (i = updatedAt));
+        }
+        return o;
+      }
+      function fbClipGroupName(t = {}) {
+        const imageName = fbFileName(t.imageName || t.image?.displayName || "")
+            .replace(/\.[^.]+$/, "")
+            .trim(),
+          clipName = fbFileName(t.clipName || "").replace(/\.[^.]+$/, "").trim();
+        if (imageName) return ZA(imageName);
+        const match = clipName.match(/^(.*?-\d+)(?:-\d+)?(?:-|$)/);
+        return ZA(match?.[1] || clipName || "未分组片段");
+      }
+      function fbRowDownloadFolder(t, e = {}) {
+        return `${jse(t, e.clipName)}${fbClipGroupName(e)}/`;
+      }
       function jse(rows = [], clipName = "") {
         if (!Array.isArray(rows)) {
           clipName = typeof rows === "string" ? rows : clipName;
@@ -36878,18 +37010,31 @@ ${V}`;
             "未命名项目",
           projectIdentity = collectionId || collectionName || projectLabel,
           registryKey = `${dateFolder}|${projectIdentity}|${projectLabel}`,
+          registry = fbReadProjectFolderRegistry(),
           existingFolder = fbExistingProjectFolder(
             rows,
             dateFolder,
             projectLabel,
           ),
-          rememberedFolder =
-            fbReadProjectFolderRegistry()?.[registryKey]?.folder || "";
+          rememberedFolder = registry?.[registryKey]?.folder || "",
+          recentFolder = fbRecentProjectFolder(
+            registry,
+            projectIdentity || projectLabel,
+            now.getTime(),
+          ),
+          compatibleRecentFolder =
+            recentFolder && recentFolder.endsWith(`-${projectLabel}/`)
+              ? recentFolder
+              : "";
         if (existingFolder) {
           fbRememberProjectFolder(registryKey, existingFolder);
           return existingFolder;
         }
         if (rememberedFolder) return fbFolderPath(rememberedFolder);
+        if (compatibleRecentFolder) {
+          fbRememberProjectFolder(registryKey, compatibleRecentFolder);
+          return compatibleRecentFolder;
+        }
         const folder = `Flow批量生成/${dateFolder}/${timeFolder}-${projectLabel}/`;
         return (fbRememberProjectFolder(registryKey, folder), folder);
       }
@@ -36955,7 +37100,13 @@ ${V}`;
       }
       function KseV2() {
         const [t, e] = Q.useState(!1),
-          n = `chrome-extension://${window[lA]?.id}/assets/logo-128.png`;
+          n = `${
+            window[lA]?.baseUrl ||
+            document.documentElement.getAttribute(
+              "data-flow-batch-extension-base-url",
+            ) ||
+            ""
+          }assets/logo-128.png`;
         return (
           Q.useEffect(() => {
             const n = (o) => {
