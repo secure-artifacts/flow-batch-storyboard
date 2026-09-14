@@ -2,8 +2,9 @@
   "use strict";
   if (window.__flowBatchTransformerV23125) return;
   window.__flowBatchTransformerV23125 = !0;
-  window.__flowBatchDiscoverPromptBridge = () =>
-    !!window.__flowBatchNativeBridge?.isReady?.();
+  window.__flowBatchDiscoverPromptBridge = () => {
+    return !!window.__flowBatchNativeBridge?.isReady?.();
+  };
   async function S(e) {
     let o;
     const a = e.headers.get("Content-Type") || "";
@@ -113,6 +114,31 @@
   }
   function R(e) {
     const o = [...new Set((e || []).filter(Boolean))];
+    const pending = window.flowBatchPendingVerificationProcesses;
+    // Some Flow grey releases keep the submit RPC open and only reveal the
+    // generation id through the result poll.  FIFO is unsafe with concurrent
+    // rows, but when there is exactly one pending submission the association
+    // is unambiguous.  Bind only ids that were not visible when that pending
+    // record was created, and never infer more than its expected output count.
+    if (Array.isArray(pending) && pending.length === 1) {
+      const process = pending[0];
+      const ignored = new Set(process?._verificationIgnoredIds || []);
+      const fresh = o.filter((id) => !ignored.has(id) && !E.has(id));
+      const expected = Math.min(4, Math.max(1, Number(process?.expectedOutputs) || 1));
+      const inferenceReady = Date.now() - Number(process?._verificationRegisteredAt || 0) >= 2500;
+      if (process?.rowId && inferenceReady && fresh.length > 0 && fresh.length <= expected) {
+        window.flowBatchPendingVerificationProcesses = pending.filter((item) => item !== process);
+        window.__flowBatchRunLogger?.record?.("poll_uuid_bound_to_unique_pending", {
+          rowId: process.rowId,
+          attempt: Number(process.attempt) || 0,
+          generationIds: fresh,
+        });
+        window.emitter?.emit?.(
+          "onSubmitSuccess",
+          Object.fromEntries(fresh.map((id) => [id, process])),
+        );
+      }
+    }
     o.forEach((c) => E.add(c));
     o.length &&
       window.__flowBatchRunLogger?.record?.("network_result_ids_observed", {
@@ -316,7 +342,7 @@
     }
     return result;
   }
-  function fbSubmitGenerationIds(payload) {
+  function fbSubmitGenerationIds(payload, rawResponse = "") {
     const result = [], seen = new Set();
     const projectId =
       /\/project\/([0-9a-f-]{36})/i.exec(location.pathname)?.[1]?.toLowerCase() || "";
@@ -350,6 +376,14 @@
       if (Array.isArray(value)) value.forEach((item) => visit(item, depth + 1));
     };
     visit(records);
+    // Flow occasionally changes the nesting of batchexecute's submit reply.
+    // UUIDs in the response of the *submit RPC itself* remain authoritative;
+    // unlike polling results, they cannot be accidentally assigned FIFO to a
+    // different row. Use this only when the structured decoder found nothing.
+    if (!result.length) {
+      for (const match of String(rawResponse || "").matchAll(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi))
+        add(match[0]);
+    }
     return result;
   }
   function fbRewriteRpcBody(body, rpc, argument) {
@@ -521,7 +555,7 @@
             });
             return;
           }
-          const ids = fbSubmitGenerationIds(payload);
+          const ids = fbSubmitGenerationIds(payload, raw);
           if (ids.length) {
             ids.forEach((id) => E.add(id));
             window.flowBatchPendingVerificationProcesses =
