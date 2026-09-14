@@ -9,8 +9,8 @@ var r = {
     default: [],
   },
   i = {
-    interval: 20,
-    intervalRandom: 10,
+    interval: 1,
+    intervalRandom: 0,
     videoModel: `veo_3_1_lite_low_priority`,
     aspectRatio: `PORTRAIT`,
     outputsPerPrompt: 1,
